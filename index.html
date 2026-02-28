@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Japanese Walking Timer</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563eb">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(registration => console.log('SW registered'))
+                .catch(error => console.log('SW registration failed'));
+        }
+    </script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>Japanese Walking Timer</h1>
+            <p class="subtitle">3-Minute Intervals • 30-Minute Sessions</p>
+        </header>
+
+        <main class="timer-section">
+            <div class="phase-indicator" id="phaseIndicator">
+                <span class="phase-text" id="phaseText">READY</span>
+            </div>
+
+            <div class="timer-display" id="timerDisplay">
+                <div class="time-text" id="timeText">3:00</div>
+                <div class="cycle-info" id="cycleInfo">Cycle 1/5</div>
+            </div>
+
+            <div class="controls">
+                <button class="btn btn-primary" id="startStopBtn">Start</button>
+                <button class="btn btn-secondary" id="resetBtn">Reset</button>
+            </div>
+
+            <div class="session-info">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="session-stats">
+                    <span id="elapsedTime">0:00</span>
+                    <span id="totalTime">30:00</span>
+                </div>
+            </div>
+        </main>
+
+        <footer class="app-footer">
+            <div class="instructions">
+                <p><strong>FAST:</strong> 70-85% intensity (breathless)</p>
+                <p><strong>SLOW:</strong> 40-50% intensity (can talk)</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
