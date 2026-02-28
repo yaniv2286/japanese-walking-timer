@@ -43,26 +43,35 @@ class JapaneseWalkingTimer {
         }
     }
 
-    playBeep(frequency = 800, duration = 3000) {
+    playBeep(frequency = 880, repeats = 3) {
         if (!this.audioContext) return;
 
-        try {
-            const oscillator = this.audioContext.createOscillator();
-            const gainNode = this.audioContext.createGain();
+        const beepDuration = 0.12;
+        const beepGap = 0.10;
+        const stepTime = beepDuration + beepGap;
 
-            oscillator.connect(gainNode);
-            gainNode.connect(this.audioContext.destination);
+        for (let i = 0; i < repeats; i++) {
+            try {
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
 
-            oscillator.frequency.value = frequency;
-            oscillator.type = 'sine';
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
 
-            gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration / 1000);
+                oscillator.frequency.value = frequency;
+                oscillator.type = 'square';
 
-            oscillator.start(this.audioContext.currentTime);
-            oscillator.stop(this.audioContext.currentTime + duration / 1000);
-        } catch (e) {
-            console.log('Error playing beep:', e);
+                const start = this.audioContext.currentTime + i * stepTime;
+                gainNode.gain.setValueAtTime(0, start);
+                gainNode.gain.linearRampToValueAtTime(0.35, start + 0.01);
+                gainNode.gain.setValueAtTime(0.35, start + beepDuration - 0.02);
+                gainNode.gain.linearRampToValueAtTime(0, start + beepDuration);
+
+                oscillator.start(start);
+                oscillator.stop(start + beepDuration);
+            } catch (e) {
+                console.log('Error playing beep:', e);
+            }
         }
     }
 
@@ -112,7 +121,7 @@ class JapaneseWalkingTimer {
         // Start with fast phase if beginning
         if (this.currentPhase === 'ready') {
             this.currentPhase = 'fast';
-            this.playBeep(1000, 3000);
+            this.playBeep(1000, 3);
             this.vibrate();
         }
 
@@ -166,7 +175,7 @@ class JapaneseWalkingTimer {
 
     switchPhase() {
         // Play alert sound and vibrate
-        this.playBeep(1200, 3000);
+        this.playBeep(1200, 4);
         this.vibrate();
 
         if (this.currentPhase === 'fast') {
@@ -183,9 +192,7 @@ class JapaneseWalkingTimer {
         this.stopTimer();
         
         // Play completion sound
-        this.playBeep(800, 3000);
-        setTimeout(() => this.playBeep(1000, 3000), 250);
-        setTimeout(() => this.playBeep(1200, 3000), 500);
+        this.playBeep(880, 4);
         this.vibrate();
 
         // Show completion message
