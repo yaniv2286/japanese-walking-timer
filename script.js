@@ -46,9 +46,8 @@ class JapaneseWalkingTimer {
     playBeep(frequency = 880, repeats = 3) {
         if (!this.audioContext) return;
 
-        const beepDuration = 0.12;
-        const beepGap = 0.10;
-        const stepTime = beepDuration + beepGap;
+        const chimeLength = 0.8;
+        const stepTime = 0.55;
 
         for (let i = 0; i < repeats; i++) {
             try {
@@ -59,16 +58,15 @@ class JapaneseWalkingTimer {
                 gainNode.connect(this.audioContext.destination);
 
                 oscillator.frequency.value = frequency;
-                oscillator.type = 'square';
+                oscillator.type = 'sine';
 
                 const start = this.audioContext.currentTime + i * stepTime;
                 gainNode.gain.setValueAtTime(0, start);
-                gainNode.gain.linearRampToValueAtTime(0.35, start + 0.01);
-                gainNode.gain.setValueAtTime(0.35, start + beepDuration - 0.02);
-                gainNode.gain.linearRampToValueAtTime(0, start + beepDuration);
+                gainNode.gain.linearRampToValueAtTime(0.28, start + 0.01);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, start + chimeLength);
 
                 oscillator.start(start);
-                oscillator.stop(start + beepDuration);
+                oscillator.stop(start + chimeLength);
             } catch (e) {
                 console.log('Error playing beep:', e);
             }
