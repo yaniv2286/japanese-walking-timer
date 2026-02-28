@@ -1,4 +1,4 @@
-const CACHE_NAME = 'japanese-walking-timer-v1';
+const CACHE_NAME = 'japanese-walking-timer-v2';
 const urlsToCache = [
   '/',
   '/index.html',
