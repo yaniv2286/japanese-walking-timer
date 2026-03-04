@@ -75,7 +75,11 @@ class JapaneseWalkingTimer {
 
     vibrate() {
         if ('vibrate' in navigator) {
-            navigator.vibrate([200, 100, 200]);
+            try {
+                navigator.vibrate([300, 150, 300, 150, 300]);
+            } catch (e) {
+                console.log('Vibration failed:', e);
+            }
         }
     }
 
