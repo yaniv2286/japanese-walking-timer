@@ -62,7 +62,7 @@ class JapaneseWalkingTimer {
 
                 const start = this.audioContext.currentTime + i * stepTime;
                 gainNode.gain.setValueAtTime(0, start);
-                gainNode.gain.linearRampToValueAtTime(0.5, start + 0.01);
+                gainNode.gain.linearRampToValueAtTime(0.7, start + 0.01);
                 gainNode.gain.exponentialRampToValueAtTime(0.001, start + chimeLength);
 
                 oscillator.start(start);
@@ -76,7 +76,7 @@ class JapaneseWalkingTimer {
     vibrate() {
         if ('vibrate' in navigator) {
             try {
-                navigator.vibrate([300, 150, 300, 150, 300]);
+                navigator.vibrate([400, 200, 400, 200, 400, 300, 400]);
             } catch (e) {
                 console.log('Vibration failed:', e);
             }
