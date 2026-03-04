@@ -21,6 +21,7 @@ class JapaneseWalkingTimer {
         this.currentTime = this.intervalDuration;
         this.totalElapsed = 0;
         this.interval = null;
+        this.startTime = null;
 
         // Audio/vibration setup
         this.audioContext = null;
@@ -115,6 +116,11 @@ class JapaneseWalkingTimer {
         this.startStopBtn.textContent = 'Stop';
         this.startStopBtn.classList.add('active');
         
+        // Record start time for accurate tracking
+        if (!this.startTime) {
+            this.startTime = Date.now() - (this.totalElapsed * 1000);
+        }
+        
         // Resume audio context if suspended
         if (this.audioContext && this.audioContext.state === 'suspended') {
             this.audioContext.resume();
@@ -154,11 +160,20 @@ class JapaneseWalkingTimer {
         this.currentCycle = 1;
         this.currentTime = this.intervalDuration;
         this.totalElapsed = 0;
+        this.startTime = null;
         this.updateDisplay();
     }
 
     tick() {
-        this.totalElapsed++;
+        // Calculate actual elapsed time using real clock
+        const actualElapsed = Math.floor((Date.now() - this.startTime) / 1000);
+        
+        // Check if we missed any time (app was in background)
+        if (actualElapsed > this.totalElapsed) {
+            this.totalElapsed = actualElapsed;
+        } else {
+            this.totalElapsed++;
+        }
 
         // Check for session completion
         if (this.totalElapsed >= this.sessionDuration) {
