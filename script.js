@@ -93,6 +93,20 @@ class JapaneseWalkingTimer {
             this.wakeLock = null;
             this.requestWakeLock();
         }
+
+        // Handle page visibility changes (app returning from background)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && this.isRunning) {
+                this.handleAppResume();
+            }
+        });
+
+        // Handle page focus changes
+        window.addEventListener('focus', () => {
+            if (this.isRunning) {
+                this.handleAppResume();
+            }
+        });
     }
 
     async requestWakeLock() {
@@ -100,6 +114,53 @@ class JapaneseWalkingTimer {
             this.wakeLock = await navigator.wakeLock.request('screen');
         } catch (e) {
             console.log('Wake Lock not supported:', e);
+        }
+    }
+
+    handleAppResume() {
+        if (!this.startTime || !this.isRunning) return;
+
+        const actualElapsed = Math.floor((Date.now() - this.startTime) / 1000);
+        const previousElapsed = this.totalElapsed;
+        
+        if (actualElapsed > this.totalElapsed) {
+            const missedTime = actualElapsed - this.totalElapsed;
+            this.totalElapsed = actualElapsed;
+            
+            // Resume audio context
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                this.audioContext.resume().then(() => {
+                    // Check for missed phase changes
+                    this.checkMissedPhaseChanges(previousElapsed, actualElapsed);
+                });
+            } else {
+                this.checkMissedPhaseChanges(previousElapsed, actualElapsed);
+            }
+        }
+        
+        this.updateDisplay();
+    }
+
+    checkMissedPhaseChanges(previousElapsed, actualElapsed) {
+        const previousPhase = Math.floor(previousElapsed / this.intervalDuration);
+        const currentPhase = Math.floor(actualElapsed / this.intervalDuration);
+        
+        if (currentPhase > previousPhase) {
+            const missedChanges = currentPhase - previousPhase;
+            
+            // Alert for missed phase changes
+            this.playBeep(1200, Math.min(missedChanges, 2));
+            this.vibrate();
+            
+            // Update current phase and cycle
+            const totalPhases = Math.floor(this.totalElapsed / this.intervalDuration);
+            this.currentPhase = (totalPhases % 2 === 0) ? 'fast' : 'slow';
+            this.currentCycle = Math.floor(totalPhases / 2) + 1;
+            
+            // Check for session completion
+            if (this.totalElapsed >= this.sessionDuration) {
+                this.completeSession();
+            }
         }
     }
 
