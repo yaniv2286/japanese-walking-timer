@@ -154,13 +154,7 @@ class JapaneseWalkingTimer {
     }
 
     tick() {
-        this.currentTime--;
         this.totalElapsed++;
-
-        // Check for phase change
-        if (this.currentTime <= 0) {
-            this.switchPhase();
-        }
 
         // Check for session completion
         if (this.totalElapsed >= this.sessionDuration) {
@@ -168,10 +162,24 @@ class JapaneseWalkingTimer {
             return;
         }
 
+        // Check for phase change (every 3 minutes)
+        if (this.totalElapsed % this.intervalDuration === 0) {
+            this.switchPhase();
+        }
+
+        // Update currentTime for display
+        this.currentTime = this.intervalDuration - (this.totalElapsed % this.intervalDuration);
+        if (this.currentTime === 0) this.currentTime = this.intervalDuration;
+
         this.updateDisplay();
     }
 
     switchPhase() {
+        // Don't switch phases if session is complete
+        if (this.totalElapsed >= this.sessionDuration) {
+            return;
+        }
+
         // Play alert sound and vibrate
         this.playBeep(1200, 4);
         this.vibrate();
@@ -182,8 +190,6 @@ class JapaneseWalkingTimer {
             this.currentPhase = 'fast';
             this.currentCycle++;
         }
-
-        this.currentTime = this.intervalDuration;
     }
 
     completeSession() {
