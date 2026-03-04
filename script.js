@@ -46,8 +46,8 @@ class JapaneseWalkingTimer {
     playBeep(frequency = 880, repeats = 3) {
         if (!this.audioContext) return;
 
-        const chimeLength = 0.8;
-        const stepTime = 0.55;
+        const chimeLength = 2.8;
+        const stepTime = 3.2;
 
         for (let i = 0; i < repeats; i++) {
             try {
