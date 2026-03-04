@@ -62,7 +62,7 @@ class JapaneseWalkingTimer {
 
                 const start = this.audioContext.currentTime + i * stepTime;
                 gainNode.gain.setValueAtTime(0, start);
-                gainNode.gain.linearRampToValueAtTime(0.28, start + 0.01);
+                gainNode.gain.linearRampToValueAtTime(0.5, start + 0.01);
                 gainNode.gain.exponentialRampToValueAtTime(0.001, start + chimeLength);
 
                 oscillator.start(start);
