@@ -93,20 +93,6 @@ class JapaneseWalkingTimer {
             this.wakeLock = null;
             this.requestWakeLock();
         }
-
-        // Handle page visibility changes (app returning from background)
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && this.isRunning) {
-                this.handleAppResume();
-            }
-        });
-
-        // Handle page focus changes
-        window.addEventListener('focus', () => {
-            if (this.isRunning) {
-                this.handleAppResume();
-            }
-        });
     }
 
     async requestWakeLock() {
@@ -177,11 +163,6 @@ class JapaneseWalkingTimer {
         this.startStopBtn.textContent = 'Stop';
         this.startStopBtn.classList.add('active');
         
-        // Record start time for accurate tracking
-        if (!this.startTime) {
-            this.startTime = Date.now() - (this.totalElapsed * 1000);
-        }
-        
         // Resume audio context if suspended
         if (this.audioContext && this.audioContext.state === 'suspended') {
             this.audioContext.resume();
@@ -226,34 +207,7 @@ class JapaneseWalkingTimer {
     }
 
     tick() {
-        // Calculate actual elapsed time using real clock
-        const actualElapsed = Math.floor((Date.now() - this.startTime) / 1000);
-        
-        // Check if we missed any time (app was in background)
-        if (actualElapsed > this.totalElapsed) {
-            const missedTime = actualElapsed - this.totalElapsed;
-            this.totalElapsed = actualElapsed;
-            
-            // Resume audio context if it was suspended
-            if (this.audioContext && this.audioContext.state === 'suspended') {
-                this.audioContext.resume();
-            }
-            
-            // Check if we missed any phase changes while in background
-            const missedPhaseChanges = Math.floor(missedTime / this.intervalDuration);
-            if (missedPhaseChanges > 0) {
-                // Trigger vibration and sound for missed phase changes
-                this.playBeep(1200, 1);
-                this.vibrate();
-                
-                // Update phase based on actual elapsed time
-                const totalPhases = Math.floor(this.totalElapsed / this.intervalDuration);
-                this.currentPhase = (totalPhases % 2 === 0) ? 'fast' : 'slow';
-                this.currentCycle = Math.floor(totalPhases / 2) + 1;
-            }
-        } else {
-            this.totalElapsed++;
-        }
+        this.totalElapsed++;
 
         // Check for session completion
         if (this.totalElapsed >= this.sessionDuration) {
@@ -262,7 +216,7 @@ class JapaneseWalkingTimer {
         }
 
         // Check for phase change (every 3 minutes)
-        if (this.totalElapsed % this.intervalDuration === 0 && this.totalElapsed > 0) {
+        if (this.totalElapsed % this.intervalDuration === 0) {
             this.switchPhase();
         }
 
