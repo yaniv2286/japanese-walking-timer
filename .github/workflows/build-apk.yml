@@ -30,20 +30,27 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
     
-    - name: Setup Capacitor
+    - name: Setup Gradle
+      uses: gradle/gradle-build-action@v2
+    
+    - name: Create Capacitor config
       run: |
-        npm install @capacitor/cli
-        npx cap init "Japanese Walking Timer" --web-dir "."
+        echo '{"appId": "com.yaniv.japanesewalkingtimer", "appName": "Japanese Walking Timer", "webDir": ".", "server": {"androidScheme": "https"}}' > capacitor.config.json
+    
+    - name: Add Android platform
+      run: |
         npx cap add android
         npx cap sync android
     
     - name: Build APK
       run: |
         cd android
-        ./gradlew assembleDebug
+        chmod +x ./gradlew
+        ./gradlew assembleDebug --stacktrace
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 30
