@@ -20,29 +20,25 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
+    - name: Create Capacitor config
+      run: |
+        echo '{"appId": "com.yaniv.japanesewalkingtimer", "appName": "Japanese Walking Timer", "webDir": ".", "bundledWebRuntime": false}' > capacitor.config.json
+    
+    - name: Add Android platform
+      run: |
+        npx @capacitor/cli@latest add android
+        npx @capacitor/cli@latest sync android
+    
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
     
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-    
-    - name: Create Capacitor config
-      run: |
-        echo '{"appId": "com.yaniv.japanesewalkingtimer", "appName": "Japanese Walking Timer", "webDir": ".", "server": {"androidScheme": "https"}}' > capacitor.config.json
-    
-    - name: Add Android platform
-      run: |
-        npx cap add android
-        npx cap sync android
-    
     - name: Build APK
       run: |
         cd android
-        chmod +x ./gradlew
-        ./gradlew assembleDebug --no-daemon --stacktrace
+        ./gradlew assembleDebug --info
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
