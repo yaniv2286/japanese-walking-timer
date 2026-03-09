@@ -149,6 +149,7 @@ public class TimerService extends Service {
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pi)
                 .setWhen(triggerTime)
+                .setShowWhen(true)
                 .setUsesChronometer(true)
                 .setChronometerCountDown(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
