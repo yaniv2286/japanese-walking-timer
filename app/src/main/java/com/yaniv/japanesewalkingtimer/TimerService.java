@@ -202,7 +202,7 @@ public class TimerService extends Service {
             currentMediaPlayer.setAudioAttributes(attributes);
             currentMediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
             currentMediaPlayer.prepare();
-            currentMediaPlayer.setVolume(1.0f, 1.0f); // Force maximum volume
+            currentMediaPlayer.setVolume(0.5f, 0.5f); // Gentle 50% volume
             currentMediaPlayer.start();
             
             Log.d(TAG, "AUDIO STARTED - Notification sound playing");
