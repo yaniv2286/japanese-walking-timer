@@ -25,6 +25,7 @@ import android.os.Vibrator;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import com.yaniv.japanesewalkingtimer.R;
 import java.util.Timer;
 import java.util.TimerTask;
 

@@ -13,6 +13,7 @@ import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import com.yaniv.japanesewalkingtimer.R;
 import java.util.ArrayList;
 import java.util.List;
 
