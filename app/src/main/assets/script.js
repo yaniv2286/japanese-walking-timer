@@ -23,6 +23,7 @@ class JapaneseWalkingTimer {
         this.interval = null;
         this.startTime = null; // System time when start was clicked
         this.lastTickTime = null;
+        this.endTime = null; // Absolute end time for session
 
         // Audio/vibration setup
         this.audioContext = null;
@@ -167,11 +168,14 @@ class JapaneseWalkingTimer {
             this.currentPhase = 'fast';
             this.playBeep(1000, 2);
             this.vibrate();
-            this.startTime = Date.now();
+            
+            // Absolute timing: Record end time for entire session
+            this.endTime = Date.now() + (this.sessionDuration * 1000);
             this.totalElapsed = 0;
         } else {
-            // Resume: adjust startTime to account for already elapsed time
-            this.startTime = Date.now() - (this.totalElapsed * 1000);
+            // Resume: recalculate endTime based on remaining time
+            const remainingTime = (this.sessionDuration - this.totalElapsed) * 1000;
+            this.endTime = Date.now() + remainingTime;
         }
 
         this.interval = setInterval(() => this.tick(), 1000);
@@ -201,15 +205,17 @@ class JapaneseWalkingTimer {
         this.totalElapsed = 0;
         this.currentTime = this.intervalDuration;
         this.startTime = null;
+        this.endTime = null;
         this.updateDisplay();
     }
 
     tick() {
-        // More accurate tick calculation
+        // Absolute timing: Calculate remaining time dynamically
         const now = Date.now();
-        this.totalElapsed = Math.floor((now - this.startTime) / 1000);
+        const remaining = Math.max(0, this.endTime - now);
+        this.totalElapsed = this.sessionDuration - Math.floor(remaining / 1000);
 
-        if (this.totalElapsed >= this.sessionDuration) {
+        if (remaining <= 0) {
             this.completeSession();
             return;
         }

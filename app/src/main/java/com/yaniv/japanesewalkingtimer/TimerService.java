@@ -111,8 +111,8 @@ public class TimerService extends Service {
             return;
         }
         
-        // CRITICAL LINE: Exactly 180000L (3 minutes)
-        long triggerTime = System.currentTimeMillis() + 180000L;
+        // CRITICAL LINE: Exactly 10000L (10 seconds for testing)
+        long triggerTime = System.currentTimeMillis() + 10000L;
         
         // Schedule exact alarm
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -121,7 +121,7 @@ public class TimerService extends Service {
             alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
         }
         
-        Log.d(TAG, "ALARM SCHEDULED - Exactly 180000L (3 minutes) from now");
+        Log.d(TAG, "ALARM SCHEDULED - Exactly 10000L (10 seconds for testing) from now");
         Log.d(TAG, "Next alarm will fire at: " + new java.util.Date(triggerTime));
     }
 
@@ -174,26 +174,31 @@ public class TimerService extends Service {
     }
 
     private void triggerAlert(Context context) {
-        // Vibrate for 4000ms
+        // Vibrate with high-priority waveform pattern
         Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator != null && vibrator.hasVibrator()) {
+            long[] pattern = {0, 1000, 500, 1000, 500, 1000}; // Wait 0ms, vibrate 1s, pause 0.5s, vibrate 1s, etc.
+            
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                VibrationEffect effect = VibrationEffect.createOneShot(4000, VibrationEffect.DEFAULT_AMPLITUDE);
-                vibrator.vibrate(effect);
+                VibrationEffect effect = VibrationEffect.createWaveform(pattern, -1);
+                AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .build();
+                vibrator.vibrate(effect, audioAttributes);
             } else {
-                vibrator.vibrate(4000);
+                vibrator.vibrate(pattern, -1);
             }
-            Log.d(TAG, "VIBRATION STARTED - 4000ms duration");
+            Log.d(TAG, "VIBRATION STARTED - Waveform pattern with high priority");
         }
         
         // Play ringtone for 4000ms
         try {
             android.media.MediaPlayer mediaPlayer = new android.media.MediaPlayer();
             mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build());
-            mediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
+            mediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
             mediaPlayer.prepare();
             mediaPlayer.start();
             
