@@ -26,8 +26,6 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import com.yaniv.japanesewalkingtimer.R;
-import java.util.Timer;
-import java.util.TimerTask;
 
 public class TimerService extends Service {
     private static final String TAG = "JapaneseTimer";
@@ -136,19 +134,7 @@ public class TimerService extends Service {
         return START_STICKY;
     }
 
-    private void startTimerTask() {
-        // No per-second timer needed - rely solely on AlarmManager for precision
-        Log.d(TAG, "Timer task simplified - Using AlarmManager only for 3-minute intervals");
-    }
-
-    private void stopTimer() {
-        if (timer != null) {
-            timer.cancel();
-            timer = null;
-            Log.d(TAG, "Timer task stopped");
-        }
-    }
-
+    
     private void handlePhaseTransition() {
         Log.d(TAG, "ALARM TRIGGERED - setCounter: " + setCounter);
         
