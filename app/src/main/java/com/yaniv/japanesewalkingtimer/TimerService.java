@@ -8,10 +8,16 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.Context;
 import android.app.AlarmManager;
+import android.content.pm.ServiceInfo;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.util.Log;
+import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 public class TimerService extends Service {
@@ -31,22 +37,32 @@ public class TimerService extends Service {
         
         // Initialize WakeLock
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JapaneseTimer:WakeLock");
+        if (powerManager != null) {
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JapaneseTimer:WakeLock");
+        }
     }
     
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "Service Started");
         
-        // Handle increment action from AlarmReceiver
-        if (intent != null && "INCREMENT_INTERVAL".equals(intent.getAction())) {
+        if (intent != null && "STOP".equals(intent.getAction())) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        // Handle alarm trigger
+        if (intent != null && "ALARM_TRIGGERED".equals(intent.getAction())) {
             currentInterval++;
-            Log.d(TAG, "INTERVAL INCREMENTED - Now at: " + currentInterval + " of 10");
+            Log.d(TAG, "ALARM TRIGGERED - Now at: " + currentInterval + " of 10");
+            
+            // Trigger vibration and sound for exactly 4000ms
+            triggerAlert(this);
             
             // Check if session is complete
             if (currentInterval >= 10) {
                 Log.d(TAG, "SESSION COMPLETE - 10 intervals finished");
-                stopService();
+                stopSelf();
                 return START_NOT_STICKY;
             }
             
@@ -77,20 +93,21 @@ public class TimerService extends Service {
         // Check if session is complete
         if (currentInterval >= 10) {
             Log.d(TAG, "SESSION COMPLETE - Stopping service");
-            stopService();
+            stopSelf();
             return;
         }
         
-        // Create Intent for AlarmReceiver
-        Intent alarmIntent = new Intent(this, AlarmReceiver.class);
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, alarmIntent, 
+        // Create Intent for Service
+        Intent alarmIntent = new Intent(this, TimerService.class);
+        alarmIntent.setAction("ALARM_TRIGGERED");
+        PendingIntent pendingIntent = PendingIntent.getService(this, 0, alarmIntent, 
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         
         // Get AlarmManager
         AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) {
             Log.e(TAG, "CRITICAL FAILURE - AlarmManager is null");
-            stopService();
+            stopSelf();
             return;
         }
         
@@ -107,18 +124,6 @@ public class TimerService extends Service {
         Log.d(TAG, "ALARM SCHEDULED - Exactly 180000L (3 minutes) from now");
         Log.d(TAG, "Next alarm will fire at: " + new java.util.Date(triggerTime));
     }
-    
-            currentMediaPlayer.setOnCompletionListener(mp -> {
-                Log.d(TAG, "ALARM AUDIO COMPLETED - MediaPlayer finished naturally");
-                mp.release();
-                currentMediaPlayer = null;
-            });
-            
-        } catch (Exception e) {
-            Log.e(TAG, "ALARM AUDIO FAILED - " + e.getMessage(), e);
-            currentMediaPlayer = null;
-        }
-    }
 
     private void startForegroundNotification() {
         Log.d(TAG, "FOREGROUND NOTIFICATION STARTED - Static notification");
@@ -132,7 +137,6 @@ public class TimerService extends Service {
         }
     }
 
-    
     private Notification createNotification(String text) {
         Intent intent = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
@@ -157,7 +161,7 @@ public class TimerService extends Service {
             c.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             c.enableVibration(false);
             c.setSound(null, null);
-            NotificationManager nm = getSystemService(NotificationManager.class);
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) {
                 nm.createNotificationChannel(c);
                 Log.d(TAG, "NOTIFICATION CHANNEL CREATED - Low importance, silent for background updates");
@@ -169,12 +173,69 @@ public class TimerService extends Service {
         }
     }
 
+    private void triggerAlert(Context context) {
+        // Vibrate for 4000ms
+        Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+        if (vibrator != null && vibrator.hasVibrator()) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                VibrationEffect effect = VibrationEffect.createOneShot(4000, VibrationEffect.DEFAULT_AMPLITUDE);
+                vibrator.vibrate(effect);
+            } else {
+                vibrator.vibrate(4000);
+            }
+            Log.d(TAG, "VIBRATION STARTED - 4000ms duration");
+        }
+        
+        // Play ringtone for 4000ms
+        try {
+            android.media.MediaPlayer mediaPlayer = new android.media.MediaPlayer();
+            mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build());
+            mediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+            
+            // Stop after exactly 4000ms
+            mediaPlayer.setOnCompletionListener(mp -> {
+                mediaPlayer.release();
+                Log.d(TAG, "AUDIO COMPLETED - 4000ms duration finished");
+            });
+            
+            // Failsafe stop after 4000ms
+            new android.os.Handler().postDelayed(() -> {
+                if (mediaPlayer != null && mediaPlayer.isPlaying()) {
+                    mediaPlayer.stop();
+                    mediaPlayer.release();
+                    Log.d(TAG, "AUDIO FORCE STOPPED - 4000ms timeout");
+                }
+            }, 4000);
+            
+            Log.d(TAG, "AUDIO STARTED - Ringtone playing for 4000ms");
+        } catch (Exception e) {
+            Log.e(TAG, "AUDIO ERROR - Failed to play ringtone: " + e.getMessage());
+        }
+    }
+
+    private void cancelAlarm() {
+        Intent alarmIntent = new Intent(this, TimerService.class);
+        alarmIntent.setAction("ALARM_TRIGGERED");
+        PendingIntent pendingIntent = PendingIntent.getService(this, 0, alarmIntent, 
+            PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
+        if (pendingIntent != null) {
+            AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager != null) {
+                alarmManager.cancel(pendingIntent);
+                Log.d(TAG, "ALARM CANCELLED");
+            }
+        }
+    }
+
     @Override
     public void onDestroy() {
         Log.d(TAG, "SERVICE DESTROYED - Cleaning up resources");
-        stopTimer();
         cancelAlarm();
-        stopAlert();
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
             Log.d(TAG, "WakeLock released during service destruction");
