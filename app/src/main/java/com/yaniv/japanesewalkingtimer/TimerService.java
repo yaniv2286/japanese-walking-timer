@@ -31,8 +31,8 @@ public class TimerService extends Service {
     // Simple variables
     private int currentInterval = 0; // Max is 10
     private PowerManager.WakeLock wakeLock;
-    private ScheduledExecutorService executorService;
-    private ScheduledFuture<?> scheduledTask;
+    private Thread backgroundThread;
+    private volatile boolean serviceRunning = true;
     private android.media.MediaPlayer currentMediaPlayer; // Prevent overlap
     
     @Override
@@ -62,10 +62,10 @@ public class TimerService extends Service {
         // Initial start - begin session
         startForegroundNotification();
         
-        // Acquire WakeLock for 35 minutes
+        // Acquire aggressive WakeLock (no timeout)
         if (wakeLock != null && !wakeLock.isHeld()) {
-            wakeLock.acquire(35 * 60 * 1000L); // 35 minutes
-            Log.d(TAG, "WAKELOCK ACQUIRED - 35 minutes for 30-minute session");
+            wakeLock.acquire(); // NO TIMEOUT - manual release only
+            Log.d(TAG, "AGGRESSIVE WAKELOCK ACQUIRED - No timeout, manual release only");
         }
         
         // Reset counter and start immortal loop
@@ -76,39 +76,46 @@ public class TimerService extends Service {
     }
     
     private void startImmortalLoop() {
-        Log.d(TAG, "STARTING IMMORTAL EXECUTOR LOOP - WakeLock keeps CPU alive");
+        Log.d(TAG, "STARTING NUCLEAR BACKGROUND THREAD - Aggressive WakeLock active");
         
-        // Initialize executor service
-        executorService = Executors.newSingleThreadScheduledExecutor();
+        serviceRunning = true;
         
-        // Start the immortal loop - every 10 seconds
-        scheduledTask = executorService.scheduleAtFixedRate(new TimerTask(), 10, 10, TimeUnit.SECONDS);
-        
-        Log.d(TAG, "IMMORTAL LOOP STARTED - Ticks every 10 seconds");
-    }
-    
-    private class TimerTask implements Runnable {
-        @Override
-        public void run() {
-            Log.d(TAG, "IMMORTAL LOOP TICK - Interval: " + currentInterval);
+        backgroundThread = new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
+            Log.d(TAG, "NUCLEAR THREAD STARTED - URGENT_AUDIO priority, WakeLock active");
             
-            // Increment counter
-            currentInterval++;
-            Log.d(TAG, "INTERVAL INCREMENTED - Now at: " + currentInterval + " of 10");
-            
-            // Trigger vibration and sound
-            triggerAlert(TimerService.this);
-            
-            // Update notification chronometer for next interval
-            long nextTriggerTime = System.currentTimeMillis() + 10000L;
-            updateNotificationChronometer(nextTriggerTime);
-            
-            // Check if session is complete
-            if (currentInterval >= 10) {
-                Log.d(TAG, "SESSION COMPLETE - 10 intervals finished");
-                stopSelf();
+            while (currentInterval < 10 && serviceRunning) {
+                try {
+                    Thread.sleep(10000); // 10-second test interval
+                    
+                    if (!serviceRunning) break; // Check if service was stopped
+                    
+                    currentInterval++;
+                    Log.d(TAG, "NUCLEAR THREAD TICK - Interval: " + currentInterval + " of 10");
+                    
+                    // Fire UI update and Sound/Vibration on main thread
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        triggerAlert(TimerService.this);
+                        
+                        // Update notification chronometer for next interval
+                        long nextTriggerTime = System.currentTimeMillis() + 10000L;
+                        updateNotificationChronometer(nextTriggerTime);
+                    });
+                    
+                } catch (InterruptedException e) {
+                    Log.d(TAG, "NUCLEAR THREAD INTERRUPTED - Breaking loop");
+                    break;
+                } catch (Exception e) {
+                    Log.e(TAG, "NUCLEAR THREAD ERROR: " + e.getMessage());
+                }
             }
-        }
+            
+            Log.d(TAG, "NUCLEAR THREAD FINISHED - Stopping service");
+            stopSelf();
+        });
+        
+        backgroundThread.start();
+        Log.d(TAG, "NUCLEAR THREAD LAUNCHED - Raw background thread with WakeLock");
     }
 
     private void startForegroundNotification() {
@@ -173,29 +180,19 @@ public class TimerService extends Service {
             currentMediaPlayer = null;
         }
         
-        // Vibrate for exactly 4000ms with kill switch
+        // Vibrate for exactly 3000ms (self-killing)
         Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator != null && vibrator.hasVibrator()) {
-            // Simple 4000ms one-shot vibration
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                VibrationEffect effect = VibrationEffect.createOneShot(4000, VibrationEffect.DEFAULT_AMPLITUDE);
-                AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .build();
-                vibrator.vibrate(effect, audioAttributes);
+                VibrationEffect effect = VibrationEffect.createOneShot(3000, VibrationEffect.DEFAULT_AMPLITUDE);
+                vibrator.vibrate(effect);
             } else {
-                vibrator.vibrate(4000);
+                vibrator.vibrate(3000);
             }
-            Log.d(TAG, "VIBRATION STARTED - 4000ms duration");
-            
-            // Cancel vibration after 4000ms (failsafe)
-            new android.os.Handler().postDelayed(() -> {
-                vibrator.cancel();
-                Log.d(TAG, "VIBRATION CANCELLED - 4000ms timeout");
-            }, 4000);
+            Log.d(TAG, "VIBRATION STARTED - 3000ms self-killing");
         }
         
-        // Play ringtone for exactly 4000ms with kill switch
+        // Play notification sound (self-killing, no continuous bug)
         try {
             currentMediaPlayer = new android.media.MediaPlayer();
             AudioAttributes attributes = new AudioAttributes.Builder()
@@ -203,14 +200,14 @@ public class TimerService extends Service {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build();
             currentMediaPlayer.setAudioAttributes(attributes);
-            currentMediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
+            currentMediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
             currentMediaPlayer.prepare();
             currentMediaPlayer.setVolume(1.0f, 1.0f); // Force maximum volume
             currentMediaPlayer.start();
             
-            Log.d(TAG, "AUDIO STARTED - Ringtone playing for 4000ms");
+            Log.d(TAG, "AUDIO STARTED - Notification sound playing");
             
-            // CRITICAL: 4-second kill switch
+            // Self-killing after 3000ms
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 if (currentMediaPlayer != null) {
                     try {
@@ -218,12 +215,12 @@ public class TimerService extends Service {
                         currentMediaPlayer.release();
                     } catch (Exception e) { /* ignore */ }
                     currentMediaPlayer = null;
-                    Log.d(TAG, "AUDIO KILLED - 4000ms timeout");
+                    Log.d(TAG, "AUDIO KILLED - 3000ms timeout");
                 }
-            }, 4000);
+            }, 3000);
             
         } catch (Exception e) {
-            Log.e(TAG, "AUDIO ERROR - Failed to play ringtone: " + e.getMessage());
+            Log.e(TAG, "AUDIO ERROR - Failed to play notification sound: " + e.getMessage());
             currentMediaPlayer = null;
         }
     }
@@ -247,7 +244,16 @@ public class TimerService extends Service {
 
     @Override
     public void onDestroy() {
-        Log.d(TAG, "SERVICE DESTROYED - Cleaning up resources");
+        Log.d(TAG, "SERVICE DESTROYED - Nuclear cleanup");
+        
+        // Stop service running flag
+        serviceRunning = false;
+        
+        // Interrupt nuclear thread
+        if (backgroundThread != null) {
+            backgroundThread.interrupt();
+            Log.d(TAG, "NUCLEAR THREAD INTERRUPTED");
+        }
         
         // Stop any playing audio
         if (currentMediaPlayer != null) {
@@ -258,18 +264,14 @@ public class TimerService extends Service {
             currentMediaPlayer = null;
         }
         
-        // Shutdown immortal loop
-        if (executorService != null) {
-            executorService.shutdownNow();
-            Log.d(TAG, "EXECUTOR SERVICE SHUTDOWN - Immortal loop stopped");
-        }
-        
+        // Release aggressive WakeLock
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
-            Log.d(TAG, "WakeLock released during service destruction");
+            Log.d(TAG, "AGGRESSIVE WAKELOCK RELEASED - Manual release");
         }
+        
         super.onDestroy();
-        Log.d(TAG, "SERVICE DESTRUCTION COMPLETED");
+        Log.d(TAG, "NUCLEAR SERVICE DESTRUCTION COMPLETED");
     }
 
     @Nullable
