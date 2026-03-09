@@ -35,17 +35,17 @@ public class TimerService extends Service {
     private static final int NOTIFICATION_ID = 1;
     private static final String ACTION_ALARM = "com.yaniv.japanesewalkingtimer.ALARM";
 
-    private Timer timer;
     private MediaPlayer currentMediaPlayer;
-    private long sessionStartTime = 0;
-    private final long INTERVAL_MS = 180000; // EXACT 3 minutes in milliseconds - NO MODIFICATION
-    private final long SESSION_MS = 1800000; // EXACT 30 minutes in milliseconds
-    private final long ALERT_DURATION_MS = 4000; // EXACT 4 seconds for alarm/vibration
     
-    // State machine
-    private int currentInterval = 0; // Start at 0, will increment to 1 on first alarm
+    // Simple state
+    private int setCounter = 0;
     private boolean isSessionActive = false;
     private boolean isAlertPlaying = false;
+    
+    // Fixed constants
+    private final long THREE_MINUTES_MS = 180000; // EXACT 3 minutes
+    private final long ALERT_DURATION_MS = 4000; // EXACT 4 seconds
+    private final int MAX_SETS = 10; // 10 intervals = 30 minutes
     
     private PowerManager.WakeLock wakeLock;
     private AudioManager audioManager;
@@ -113,32 +113,24 @@ public class TimerService extends Service {
 
         // Check if this is a fresh start (not from the alarm action)
         if (intent != null && intent.getAction() == null) {
-            Log.d(TAG, "FRESH START - Initializing new 30-minute walking session");
+            Log.d(TAG, "FRESH START - Simple timer initialization");
             
-            // Initialize absolute timing state machine
-            sessionStartTime = System.currentTimeMillis();
-            currentInterval = 0; // Start at 0, will increment to 1 on first alarm
+            // Simple initialization
+            setCounter = 0;
             isSessionActive = false;
             isAlertPlaying = false;
             
-            Log.d(TAG, "ABSOLUTE TIMING INITIALIZED - Session start: " + sessionStartTime + 
-                  ", Next alarm target: " + (sessionStartTime + INTERVAL_MS));
-            
+            // Acquire WakeLock for background execution
             if (wakeLock != null && !wakeLock.isHeld()) {
                 wakeLock.acquire(40 * 60 * 1000L);
-                Log.d(TAG, "CPU WAKELOCK ACQUIRED - Partial wake lock for 40 minutes, keeping CPU awake during timer session");
-            } else if (wakeLock != null && wakeLock.isHeld()) {
-                Log.d(TAG, "CPU WAKELOCK ALREADY HELD - WakeLock already active");
-            } else {
-                Log.e(TAG, "CPU WAKELOCK FAILED - WakeLock is null, timer may not work in deep sleep");
+                Log.d(TAG, "WAKELOCK ACQUIRED - CPU will stay awake for 30-minute session");
             }
-
+            
             startForegroundNotification();
-            startTimerTask();
             scheduleNextAlarm();
             
             isSessionActive = true;
-            Log.d(TAG, "SESSION STARTED - 10 intervals of 3 minutes each (30 minutes total)");
+            Log.d(TAG, "SESSION STARTED - Simple 3-minute intervals, setCounter: " + setCounter);
         }
 
         return START_STICKY;
@@ -158,101 +150,78 @@ public class TimerService extends Service {
     }
 
     private void handlePhaseTransition() {
-        long currentTime = System.currentTimeMillis();
-        long elapsedFromStart = currentTime - sessionStartTime;
-        long expectedIntervalTime = currentInterval * INTERVAL_MS;
+        Log.d(TAG, "ALARM TRIGGERED - setCounter: " + setCounter);
         
-        Log.d(TAG, "ABSOLUTE INTERVAL TRIGGERED - Elapsed: " + (elapsedFromStart / 1000) + "s, Expected: " + (expectedIntervalTime / 1000) + "s");
+        // Increment counter
+        setCounter++;
         
-        // Increment interval counter
-        currentInterval++;
-        
-        Log.d(TAG, "INTERVAL COUNTER - Now at " + currentInterval + " (10 intervals = 30 minutes total)");
-        
-        // Check for session completion (10 intervals = 30 minutes)
-        if (currentInterval >= 10) {
-            Log.d(TAG, "SESSION COMPLETION - Interval " + currentInterval + " of 10 reached, total elapsed: " + (elapsedFromStart / 1000) + "s");
-            triggerReliableAlarm(6); // Final unique sound
+        // Check if session is complete
+        if (setCounter >= MAX_SETS) {
+            Log.d(TAG, "SESSION COMPLETE - " + setCounter + " intervals finished");
+            triggerReliableAlarm(6); // Final alert
             
-            // Stop service after EXACT 4-second alert duration
+            // Stop after 4 seconds
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                // Release WakeLock before stopping service
                 if (wakeLock != null && wakeLock.isHeld()) {
                     wakeLock.release();
-                    Log.d(TAG, "WAKELOCK RELEASED - 30-minute session completed");
+                    Log.d(TAG, "WAKELOCK RELEASED - Session done");
                 }
                 stopForeground(true);
                 stopSelf();
-                Log.d(TAG, "SERVICE STOPPED - 30-minute session completed at interval " + currentInterval);
-            }, ALERT_DURATION_MS); // EXACT 4 seconds
+                Log.d(TAG, "SERVICE STOPPED - 30 minutes complete");
+            }, ALERT_DURATION_MS);
             return;
         }
         
-        // Trigger standard 3-minute alert
-        Log.d(TAG, "ALERT TRIGGERED - Interval " + currentInterval + " alert sequence starting");
+        // Standard alert for intervals 1-9
+        Log.d(TAG, "ALERT FIRING - Interval " + setCounter + " of " + MAX_SETS);
         triggerReliableAlarm(4);
         
-        // Schedule next alarm with absolute timing
-        Log.d(TAG, "SCHEDULING NEXT - Interval " + (currentInterval + 1));
+        // Schedule next alarm
         scheduleNextAlarm();
         
-        Log.d(TAG, "INTERVAL " + currentInterval + " COMPLETE - Next alarm scheduled with absolute timing");
+        Log.d(TAG, "INTERVAL " + setCounter + " DONE - Next alarm scheduled");
     }
 
     private void scheduleNextAlarm() {
-        // FAIL FAST - Ensure AlarmManager is available
+        // Get AlarmManager
         AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
         if (am == null) {
-            Log.e(TAG, "CRITICAL FAILURE - AlarmManager is null, cannot schedule alarm");
+            Log.e(TAG, "CRITICAL FAILURE - AlarmManager is null");
             stopForeground(true);
             stopSelf();
             return;
         }
         
-        // Clear any previous ghost alarms
+        // Clear previous alarm
         Intent cancelIntent = new Intent(this, TimerService.class);
         cancelIntent.setAction(ACTION_ALARM);
         PendingIntent cancelPi = PendingIntent.getService(this, 0, cancelIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         am.cancel(cancelPi);
-        Log.d(TAG, "GHOST ALARMS CLEARED - Previous PendingIntent cancelled");
         
-        // Calculate ABSOLUTE next alarm time
-        long nextInterval = currentInterval + 1;
-        long absoluteTargetTime = sessionStartTime + (nextInterval * INTERVAL_MS);
-        long currentTime = System.currentTimeMillis();
-        long timeFromNow = absoluteTargetTime - currentTime;
-        
-        // Create new PendingIntent for this specific alarm
+        // Schedule exactly 180,000ms from now
         Intent intent = new Intent(this, TimerService.class);
         intent.setAction(ACTION_ALARM);
         PendingIntent pi = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         
-        // Schedule with absolute timing
-        long triggerAt = SystemClock.elapsedRealtime() + timeFromNow;
+        long triggerAt = SystemClock.elapsedRealtime() + THREE_MINUTES_MS;
         
-        // Check exact alarm permission
-        boolean canScheduleExact = true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            canScheduleExact = am.canScheduleExactAlarms();
-            Log.d(TAG, "Android 12+ exact alarm permission: " + canScheduleExact);
+        // FAIL FAST - Verify exact timing
+        if (THREE_MINUTES_MS != 180000) {
+            Log.e(TAG, "CRITICAL ERROR - Interval is not 180,000ms: " + THREE_MINUTES_MS);
+            return;
         }
-
-        if (canScheduleExact) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
-                Log.d(TAG, "ABSOLUTE ALARM SCHEDULED - setExactAndAllowWhileIdle");
-            } else {
-                am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
-                Log.d(TAG, "ABSOLUTE ALARM SCHEDULED - setExact");
-            }
+        
+        // Schedule exact alarm
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
+            Log.d(TAG, "ALARM SCHEDULED - Exactly 180,000ms from now");
         } else {
-            am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
-            Log.w(TAG, "FALLBACK ALARM - setAndAllowWhileIdle (may be less precise)");
+            am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
+            Log.d(TAG, "ALARM SCHEDULED - Exactly 180,000ms from now (legacy)");
         }
         
-        Log.d(TAG, "NEXT ALARM SET FOR: " + timeFromNow + "ms from now");
-        Log.d(TAG, "ABSOLUTE TARGET - Interval " + nextInterval + " at: " + new java.util.Date(absoluteTargetTime) + 
-              " (Session start: " + new java.util.Date(sessionStartTime) + ")");
+        Log.d(TAG, "NEXT ALARM - setCounter will be: " + (setCounter + 1));
     }
 
     private void cancelAlarm() {
