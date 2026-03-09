@@ -33,6 +33,7 @@ public class TimerService extends Service {
     private PowerManager.WakeLock wakeLock;
     private Thread backgroundThread;
     private volatile boolean serviceRunning = true;
+    private volatile boolean isRunning = true; // Kill runaway loop
     private android.media.MediaPlayer currentMediaPlayer; // Prevent overlap
     
     @Override
@@ -84,14 +85,21 @@ public class TimerService extends Service {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
             Log.d(TAG, "NUCLEAR THREAD STARTED - URGENT_AUDIO priority, WakeLock active");
             
-            while (currentInterval < 10 && serviceRunning) {
+            while (currentInterval < 10 && serviceRunning && isRunning) {
                 try {
                     Thread.sleep(10000); // 10-second test interval
                     
-                    if (!serviceRunning) break; // Check if service was stopped
+                    if (!serviceRunning || !isRunning) break; // Check if service was stopped
                     
                     currentInterval++;
                     Log.d(TAG, "NUCLEAR THREAD TICK - Interval: " + currentInterval + " of 10");
+                    
+                    // HARD EXIT: Stop after exactly 10 intervals
+                    if (currentInterval >= 10) {
+                        isRunning = false;
+                        stopSelf();
+                        break;
+                    }
                     
                     // Fire UI update and Sound/Vibration on main thread
                     new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
@@ -120,7 +128,7 @@ public class TimerService extends Service {
 
     private void startForegroundNotification() {
         Log.d(TAG, "FOREGROUND NOTIFICATION STARTED - With chronometer");
-        Notification n = createNotification("Japanese Walking Timer Active", System.currentTimeMillis() + 10000L);
+        Notification n = createNotification("Japanese Walking Timer", "Cycle 1/5", System.currentTimeMillis() + 10000L);
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             Log.d(TAG, "FOREGROUND SERVICE STARTED - API 34+ with SPECIAL_USE type");
@@ -130,12 +138,12 @@ public class TimerService extends Service {
         }
     }
 
-    private Notification createNotification(String text, long triggerTime) {
+    private Notification createNotification(String title, String content, long triggerTime) {
         Intent intent = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Japanese Walking Timer")
-                .setContentText(text)
+                .setContentTitle(title)
+                .setContentText(content)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pi)
                 .setWhen(triggerTime)
@@ -226,17 +234,21 @@ public class TimerService extends Service {
     }
 
     private void updateNotificationChronometer(long triggerTime) {
-        // Dynamic text showing current progress
+        // Cycle header: Show current cycle (1-5)
+        int currentCycle = (currentInterval / 2) + 1;
+        String cycleTitle = "Cycle " + currentCycle + "/5";
+        
+        // Dynamic text showing current set
         String progressText = "Set " + (currentInterval + 1) + "/10";
         
-        // Create updated notification with chronometer
-        Notification updatedNotification = createNotification(progressText, triggerTime);
+        // Create updated notification with live countdown
+        Notification updatedNotification = createNotification(cycleTitle, progressText, triggerTime);
         
         // Push notification update once per interval
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (notificationManager != null) {
             notificationManager.notify(NOTIFICATION_ID, updatedNotification);
-            Log.d(TAG, "NOTIFICATION UPDATED - Chronometer set for interval " + (currentInterval + 1));
+            Log.d(TAG, "NOTIFICATION UPDATED - " + cycleTitle + " - " + progressText + " - Live countdown active");
         }
     }
 
@@ -246,7 +258,8 @@ public class TimerService extends Service {
     public void onDestroy() {
         Log.d(TAG, "SERVICE DESTROYED - Nuclear cleanup");
         
-        // Stop service running flag
+        // Kill runaway loop
+        isRunning = false;
         serviceRunning = false;
         
         // Interrupt nuclear thread
@@ -264,14 +277,14 @@ public class TimerService extends Service {
             currentMediaPlayer = null;
         }
         
-        // Release aggressive WakeLock
+        // Release aggressive WakeLock so phone can sleep
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
-            Log.d(TAG, "AGGRESSIVE WAKELOCK RELEASED - Manual release");
+            Log.d(TAG, "AGGRESSIVE WAKELOCK RELEASED - Phone can sleep now");
         }
         
         super.onDestroy();
-        Log.d(TAG, "NUCLEAR SERVICE DESTRUCTION COMPLETED");
+        Log.d(TAG, "NUCLEAR SERVICE DESTRUCTION COMPLETED - All resources cleaned");
     }
 
     @Nullable
