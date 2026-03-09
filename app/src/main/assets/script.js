@@ -25,9 +25,7 @@ class JapaneseWalkingTimer {
         this.lastTickTime = null;
         this.endTime = null; // Absolute end time for session
 
-        // Audio/vibration setup
-        this.audioContext = null;
-        this.initAudio();
+        // Audio disabled - backend handles all sounds
 
         // Event listeners
         this.bindEvents();
@@ -36,50 +34,9 @@ class JapaneseWalkingTimer {
         this.updateDisplay();
     }
 
-    initAudio() {
-        // Initialize Web Audio API for beep sounds
-        try {
-            window.AudioContext = window.AudioContext || window.webkitAudioContext;
-            this.audioContext = new AudioContext();
-        } catch (e) {
-            console.log('Web Audio API not supported');
-        }
-    }
+    // Audio removed - backend handles all sounds
 
-    playBeep(frequency = 880, repeats = 3) {
-        if (!this.audioContext) return;
-
-        // Resume context if suspended (common in mobile browsers)
-        if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
-        }
-
-        const chimeLength = 1.0;
-        const stepTime = 1.2;
-
-        for (let i = 0; i < repeats; i++) {
-            try {
-                const oscillator = this.audioContext.createOscillator();
-                const gainNode = this.audioContext.createGain();
-
-                oscillator.connect(gainNode);
-                gainNode.connect(this.audioContext.destination);
-
-                oscillator.frequency.value = frequency;
-                oscillator.type = 'sine';
-
-                const start = this.audioContext.currentTime + i * stepTime;
-                gainNode.gain.setValueAtTime(0, start);
-                gainNode.gain.linearRampToValueAtTime(0.7, start + 0.01);
-                gainNode.gain.exponentialRampToValueAtTime(0.001, start + chimeLength);
-
-                oscillator.start(start);
-                oscillator.stop(start + chimeLength);
-            } catch (e) {
-                console.log('Error playing beep:', e);
-            }
-        }
-    }
+    // Audio removed - backend handles all sounds
 
     vibrate() {
         if ('vibrate' in navigator) {
@@ -132,8 +89,7 @@ class JapaneseWalkingTimer {
             this.currentPhase = (totalPhases % 2 === 0) ? 'fast' : 'slow';
             this.currentCycle = Math.floor(totalPhases / 2) + 1;
             
-            // Play alert if we just caught up to a new phase
-            this.playBeep(1200, 3);
+            // Backend handles all audio - frontend silent
             this.vibrate();
         }
 
@@ -160,13 +116,11 @@ class JapaneseWalkingTimer {
             window.Android.startTimerService();
         }
 
-        if (this.audioContext && this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
-        }
+        // AudioContext removed - backend handles all sounds
 
         if (this.currentPhase === 'ready') {
             this.currentPhase = 'fast';
-            this.playBeep(1000, 2);
+            // Backend handles all audio - frontend silent
             this.vibrate();
             
             // Absolute timing: Record end time for entire session
@@ -235,7 +189,7 @@ class JapaneseWalkingTimer {
     }
 
     switchPhase() {
-        this.playBeep(1200, 4);
+        // Backend handles all audio - frontend silent
         this.vibrate();
 
         const totalPhases = Math.floor(this.totalElapsed / this.intervalDuration);
@@ -246,7 +200,7 @@ class JapaneseWalkingTimer {
     completeSession() {
         this.totalElapsed = this.sessionDuration;
         this.stopTimer();
-        this.playBeep(880, 5);
+        // Backend handles all audio - frontend silent
         this.vibrate();
         this.phaseText.textContent = 'COMPLETE!';
         this.phaseIndicator.className = 'phase-indicator complete';
