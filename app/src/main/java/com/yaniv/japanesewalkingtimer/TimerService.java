@@ -3,11 +3,9 @@ package com.yaniv.japanesewalkingtimer;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.Context;
-import android.app.AlarmManager;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
 import android.media.RingtoneManager;
@@ -19,6 +17,10 @@ import android.os.Vibrator;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ScheduledFuture;
 
 public class TimerService extends Service {
     private static final String TAG = "JapaneseTimer";
@@ -28,6 +30,8 @@ public class TimerService extends Service {
     // Simple variables
     private int currentInterval = 0; // Max is 10
     private PowerManager.WakeLock wakeLock;
+    private ScheduledExecutorService executorService;
+    private ScheduledFuture<?> scheduledTask;
     
     @Override
     public void onCreate() {
@@ -51,25 +55,7 @@ public class TimerService extends Service {
             return START_NOT_STICKY;
         }
 
-        // Handle alarm trigger
-        if (intent != null && "ALARM_TRIGGERED".equals(intent.getAction())) {
-            currentInterval++;
-            Log.d(TAG, "ALARM TRIGGERED - Now at: " + currentInterval + " of 10");
-            
-            // Trigger vibration and sound for exactly 4000ms
-            triggerAlert(this);
-            
-            // Check if session is complete
-            if (currentInterval >= 10) {
-                Log.d(TAG, "SESSION COMPLETE - 10 intervals finished");
-                stopSelf();
-                return START_NOT_STICKY;
-            }
-            
-            // Schedule next alarm
-            scheduleNextAlarm();
-            return START_STICKY;
-        }
+        // No AlarmManager - immortal loop handles everything
         
         // Initial start - begin session
         startForegroundNotification();
@@ -80,52 +66,47 @@ public class TimerService extends Service {
             Log.d(TAG, "WAKELOCK ACQUIRED - 35 minutes for 30-minute session");
         }
         
-        // Reset counter and start
+        // Reset counter and start immortal loop
         currentInterval = 0;
-        scheduleNextAlarm();
+        startImmortalLoop();
         
         return START_STICKY;
     }
     
-    private void scheduleNextAlarm() {
-        Log.d(TAG, "SCHEDULING NEXT ALARM - Current interval: " + currentInterval);
+    private void startImmortalLoop() {
+        Log.d(TAG, "STARTING IMMORTAL EXECUTOR LOOP - WakeLock keeps CPU alive");
         
-        // Check if session is complete
-        if (currentInterval >= 10) {
-            Log.d(TAG, "SESSION COMPLETE - Stopping service");
-            stopSelf();
-            return;
+        // Initialize executor service
+        executorService = Executors.newSingleThreadScheduledExecutor();
+        
+        // Start the immortal loop - every 10 seconds
+        scheduledTask = executorService.scheduleAtFixedRate(new TimerTask(), 10, 10, TimeUnit.SECONDS);
+        
+        Log.d(TAG, "IMMORTAL LOOP STARTED - Ticks every 10 seconds");
+    }
+    
+    private class TimerTask implements Runnable {
+        @Override
+        public void run() {
+            Log.d(TAG, "IMMORTAL LOOP TICK - Interval: " + currentInterval);
+            
+            // Increment counter
+            currentInterval++;
+            Log.d(TAG, "INTERVAL INCREMENTED - Now at: " + currentInterval + " of 10");
+            
+            // Trigger vibration and sound
+            triggerAlert(TimerService.this);
+            
+            // Update notification chronometer for next interval
+            long nextTriggerTime = System.currentTimeMillis() + 10000L;
+            updateNotificationChronometer(nextTriggerTime);
+            
+            // Check if session is complete
+            if (currentInterval >= 10) {
+                Log.d(TAG, "SESSION COMPLETE - 10 intervals finished");
+                stopSelf();
+            }
         }
-        
-        // Create Intent for Service
-        Intent alarmIntent = new Intent(this, TimerService.class);
-        alarmIntent.setAction("ALARM_TRIGGERED");
-        PendingIntent pendingIntent = PendingIntent.getService(this, 0, alarmIntent, 
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        
-        // Get AlarmManager
-        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        if (alarmManager == null) {
-            Log.e(TAG, "CRITICAL FAILURE - AlarmManager is null");
-            stopSelf();
-            return;
-        }
-        
-        // CRITICAL LINE: Exactly 10000L (10 seconds for testing)
-        long triggerTime = System.currentTimeMillis() + 10000L;
-        
-        // Schedule exact alarm
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
-        } else {
-            alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
-        }
-        
-        Log.d(TAG, "ALARM SCHEDULED - Exactly 10000L (10 seconds for testing) from now");
-        Log.d(TAG, "Next alarm will fire at: " + new java.util.Date(triggerTime));
-        
-        // Update notification with chronometer for new interval
-        updateNotificationChronometer(triggerTime);
     }
 
     private void startForegroundNotification() {
@@ -247,24 +228,18 @@ public class TimerService extends Service {
         }
     }
 
-    private void cancelAlarm() {
-        Intent alarmIntent = new Intent(this, TimerService.class);
-        alarmIntent.setAction("ALARM_TRIGGERED");
-        PendingIntent pendingIntent = PendingIntent.getService(this, 0, alarmIntent, 
-            PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
-        if (pendingIntent != null) {
-            AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-            if (alarmManager != null) {
-                alarmManager.cancel(pendingIntent);
-                Log.d(TAG, "ALARM CANCELLED");
-            }
-        }
-    }
+    // No AlarmManager - immortal loop handles timing
 
     @Override
     public void onDestroy() {
         Log.d(TAG, "SERVICE DESTROYED - Cleaning up resources");
-        cancelAlarm();
+        
+        // Shutdown immortal loop
+        if (executorService != null) {
+            executorService.shutdownNow();
+            Log.d(TAG, "EXECUTOR SERVICE SHUTDOWN - Immortal loop stopped");
+        }
+        
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
             Log.d(TAG, "WakeLock released during service destruction");
