@@ -95,6 +95,17 @@ public class TimerService extends Service {
 
         if (intent != null && ACTION_ALARM.equals(intent.getAction())) {
             Log.d(TAG, "ALARM action received - AlarmManager triggered interval alarm");
+            
+            // Verify WakeLock is still held
+            if (wakeLock != null && wakeLock.isHeld()) {
+                Log.d(TAG, "WAKELOCK VERIFIED - CPU wake lock still active during alarm trigger");
+            } else if (wakeLock != null) {
+                Log.e(TAG, "WAKELOCK LOST - WakeLock not held during alarm trigger, reacquiring");
+                wakeLock.acquire(40 * 60 * 1000L);
+            } else {
+                Log.e(TAG, "WAKELOCK NULL - WakeLock is null during alarm trigger");
+            }
+            
             if (isSessionActive) {
                 handlePhaseTransition();
             } else {
@@ -161,11 +172,11 @@ public class TimerService extends Service {
         // Increment interval counter
         currentSet++;
         
-        Log.d(TAG, "INTERVAL " + currentSet + " of 10 - 3-minute mark reached");
+        Log.d(TAG, "COUNTER UPDATE - Now at INTERVAL " + currentSet + " of 10");
         
         // Check for session completion (10 intervals = 30 minutes)
-        if (currentSet > 10) {
-            Log.d(TAG, "SESSION COMPLETED - 10 intervals (30 minutes) finished");
+        if (currentSet >= 10) {
+            Log.d(TAG, "SESSION COMPLETION REACHED - Interval " + currentSet + " of 10, triggering final sequence");
             triggerReliableAlarm(6); // Final unique sound
             
             // Stop service after final alert
@@ -173,22 +184,24 @@ public class TimerService extends Service {
                 // Release WakeLock before stopping service
                 if (wakeLock != null && wakeLock.isHeld()) {
                     wakeLock.release();
-                    Log.d(TAG, "CPU WAKELOCK RELEASED - Session completed, CPU can now sleep");
+                    Log.d(TAG, "CPU WAKELOCK RELEASED - Session completed after 30 minutes, CPU can now sleep");
                 }
                 stopForeground(true);
                 stopSelf();
-                Log.d(TAG, "SERVICE STOPPED - Session completed successfully after 30 minutes");
+                Log.d(TAG, "SERVICE STOPPED - 30-minute session completed successfully at interval " + currentSet);
             }, 4000); // Wait for final alert to finish
             return;
         }
         
         // Trigger standard 3-minute alert
+        Log.d(TAG, "ALERT TRIGGERED - Interval " + currentSet + " alert sequence starting");
         triggerReliableAlarm(4);
         
-        // Schedule next 3-minute alarm
+        // Schedule next 3-minute alarm BEFORE current alert finishes
+        Log.d(TAG, "RECURSIVE SCHEDULING - Scheduling next alarm for interval " + (currentSet + 1));
         scheduleNextAlarm();
         
-        Log.d(TAG, "NEXT 3-MINUTE ALARM SCHEDULED - Interval " + currentSet + " complete");
+        Log.d(TAG, "INTERVAL " + currentSet + " COMPLETE - Next alarm scheduled, continuing 30-minute session");
     }
 
     private void scheduleNextAlarm() {
@@ -222,8 +235,8 @@ public class TimerService extends Service {
             }
             
             long scheduledTime = System.currentTimeMillis() + (intervalDuration * 1000L);
-            Log.d(TAG, "ALARM DETAILS - Next 3-minute alarm scheduled for: " + new java.util.Date(scheduledTime) + 
-                  ", Current interval: " + currentSet);
+            Log.d(TAG, "ALARM SCHEDULED - Next alarm for INTERVAL " + (currentSet + 1) + " at: " + new java.util.Date(scheduledTime) + 
+                  " (Current: " + currentSet + ", Target: " + (currentSet + 1) + " of 10)");
         } else {
             Log.e(TAG, "FAILED TO SCHEDULE ALARM - AlarmManager is null");
         }
