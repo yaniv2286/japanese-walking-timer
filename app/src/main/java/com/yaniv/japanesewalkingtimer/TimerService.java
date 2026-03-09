@@ -201,12 +201,14 @@ public class TimerService extends Service {
         // Play ringtone for 4000ms
         try {
             android.media.MediaPlayer mediaPlayer = new android.media.MediaPlayer();
-            mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM) // CRITICAL: Bypasses silent mode
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build());
-            mediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
+                .build();
+            mediaPlayer.setAudioAttributes(attributes);
+            mediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
             mediaPlayer.prepare();
+            mediaPlayer.setVolume(1.0f, 1.0f); // Force maximum volume
             mediaPlayer.start();
             
             // Stop after exactly 4000ms

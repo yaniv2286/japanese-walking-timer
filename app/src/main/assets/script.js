@@ -16,8 +16,8 @@ class JapaneseWalkingTimer {
         this.currentPhase = 'ready'; // 'ready', 'fast', 'slow'
         this.currentCycle = 1;
         this.totalCycles = 5;
-        this.intervalDuration = 180; // 3 minutes in seconds
-        this.sessionDuration = 1800; // 30 minutes in seconds
+        this.intervalDuration = 10; // 10 seconds for testing
+        this.sessionDuration = 100; // 10 intervals × 10 seconds = 100 seconds
         this.currentTime = this.intervalDuration;
         this.totalElapsed = 0;
         this.interval = null;
