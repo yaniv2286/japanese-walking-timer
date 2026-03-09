@@ -223,6 +223,7 @@ public class TimerService extends Service {
         }
     }
 
+    
     private void playAlertSequence(int repeats) {
         triggerReliableAlarm(repeats);
     }
@@ -233,7 +234,7 @@ public class TimerService extends Service {
             return;
         }
         
-        Log.d(TAG, "ALERT STARTED - " + count + " repetitions, duration: " + alertDurationMs + "ms");
+        Log.d(TAG, "ALERT STARTED - " + count + " repetitions, duration: " + ALERT_DURATION_MS + "ms");
         isAlertPlaying = true;
         
         new Thread(() -> {
@@ -250,12 +251,12 @@ public class TimerService extends Service {
             } finally {
                 // Auto-stop after alert duration
                 try {
-                    Thread.sleep(alertDurationMs);
+                    Thread.sleep(ALERT_DURATION_MS);
                 } catch (InterruptedException e) {
                     // Ignore
                 }
                 stopAlert();
-                Log.d(TAG, "ALERT COMPLETED - Auto-stopped after " + alertDurationMs + "ms");
+                Log.d(TAG, "ALERT COMPLETED - Auto-stopped after " + ALERT_DURATION_MS + "ms");
             }
         }).start();
     }
@@ -356,7 +357,7 @@ public class TimerService extends Service {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Japanese Walking Timer")
                 .setContentText(text)
-                .setSmallIcon(R.drawable.ic_launcher)
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pi)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
