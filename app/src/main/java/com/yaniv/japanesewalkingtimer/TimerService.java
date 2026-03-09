@@ -3,6 +3,7 @@ package com.yaniv.japanesewalkingtimer;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.Context;
@@ -32,6 +33,7 @@ public class TimerService extends Service {
     private PowerManager.WakeLock wakeLock;
     private ScheduledExecutorService executorService;
     private ScheduledFuture<?> scheduledTask;
+    private android.media.MediaPlayer currentMediaPlayer; // Prevent overlap
     
     @Override
     public void onCreate() {
@@ -162,54 +164,67 @@ public class TimerService extends Service {
     }
 
     private void triggerAlert(Context context) {
-        // Vibrate with high-priority waveform pattern
+        // Prevent overlap - stop any existing audio
+        if (currentMediaPlayer != null) {
+            try {
+                if (currentMediaPlayer.isPlaying()) currentMediaPlayer.stop();
+                currentMediaPlayer.release();
+            } catch (Exception e) { /* ignore */ }
+            currentMediaPlayer = null;
+        }
+        
+        // Vibrate for exactly 4000ms with kill switch
         Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator != null && vibrator.hasVibrator()) {
-            long[] pattern = {0, 1000, 500, 1000, 500, 1000}; // Wait 0ms, vibrate 1s, pause 0.5s, vibrate 1s, etc.
-            
+            // Simple 4000ms one-shot vibration
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                VibrationEffect effect = VibrationEffect.createWaveform(pattern, -1);
+                VibrationEffect effect = VibrationEffect.createOneShot(4000, VibrationEffect.DEFAULT_AMPLITUDE);
                 AudioAttributes audioAttributes = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .build();
                 vibrator.vibrate(effect, audioAttributes);
             } else {
-                vibrator.vibrate(pattern, -1);
+                vibrator.vibrate(4000);
             }
-            Log.d(TAG, "VIBRATION STARTED - Waveform pattern with high priority");
+            Log.d(TAG, "VIBRATION STARTED - 4000ms duration");
+            
+            // Cancel vibration after 4000ms (failsafe)
+            new android.os.Handler().postDelayed(() -> {
+                vibrator.cancel();
+                Log.d(TAG, "VIBRATION CANCELLED - 4000ms timeout");
+            }, 4000);
         }
         
-        // Play ringtone for 4000ms
+        // Play ringtone for exactly 4000ms with kill switch
         try {
-            android.media.MediaPlayer mediaPlayer = new android.media.MediaPlayer();
+            currentMediaPlayer = new android.media.MediaPlayer();
             AudioAttributes attributes = new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM) // CRITICAL: Bypasses silent mode
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build();
-            mediaPlayer.setAudioAttributes(attributes);
-            mediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
-            mediaPlayer.prepare();
-            mediaPlayer.setVolume(1.0f, 1.0f); // Force maximum volume
-            mediaPlayer.start();
+            currentMediaPlayer.setAudioAttributes(attributes);
+            currentMediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
+            currentMediaPlayer.prepare();
+            currentMediaPlayer.setVolume(1.0f, 1.0f); // Force maximum volume
+            currentMediaPlayer.start();
             
-            // Stop after exactly 4000ms
-            mediaPlayer.setOnCompletionListener(mp -> {
-                mediaPlayer.release();
-                Log.d(TAG, "AUDIO COMPLETED - 4000ms duration finished");
-            });
+            Log.d(TAG, "AUDIO STARTED - Ringtone playing for 4000ms");
             
-            // Failsafe stop after 4000ms
-            new android.os.Handler().postDelayed(() -> {
-                if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-                    mediaPlayer.stop();
-                    mediaPlayer.release();
-                    Log.d(TAG, "AUDIO FORCE STOPPED - 4000ms timeout");
+            // CRITICAL: 4-second kill switch
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (currentMediaPlayer != null) {
+                    try {
+                        if (currentMediaPlayer.isPlaying()) currentMediaPlayer.stop();
+                        currentMediaPlayer.release();
+                    } catch (Exception e) { /* ignore */ }
+                    currentMediaPlayer = null;
+                    Log.d(TAG, "AUDIO KILLED - 4000ms timeout");
                 }
             }, 4000);
             
-            Log.d(TAG, "AUDIO STARTED - Ringtone playing for 4000ms");
         } catch (Exception e) {
             Log.e(TAG, "AUDIO ERROR - Failed to play ringtone: " + e.getMessage());
+            currentMediaPlayer = null;
         }
     }
 
@@ -233,6 +248,15 @@ public class TimerService extends Service {
     @Override
     public void onDestroy() {
         Log.d(TAG, "SERVICE DESTROYED - Cleaning up resources");
+        
+        // Stop any playing audio
+        if (currentMediaPlayer != null) {
+            try {
+                if (currentMediaPlayer.isPlaying()) currentMediaPlayer.stop();
+                currentMediaPlayer.release();
+            } catch (Exception e) { /* ignore */ }
+            currentMediaPlayer = null;
+        }
         
         // Shutdown immortal loop
         if (executorService != null) {
