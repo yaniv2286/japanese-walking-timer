@@ -123,11 +123,14 @@ public class TimerService extends Service {
         
         Log.d(TAG, "ALARM SCHEDULED - Exactly 10000L (10 seconds for testing) from now");
         Log.d(TAG, "Next alarm will fire at: " + new java.util.Date(triggerTime));
+        
+        // Update notification with chronometer for new interval
+        updateNotificationChronometer(triggerTime);
     }
 
     private void startForegroundNotification() {
-        Log.d(TAG, "FOREGROUND NOTIFICATION STARTED - Static notification");
-        Notification n = createNotification("Japanese Walking Timer Active");
+        Log.d(TAG, "FOREGROUND NOTIFICATION STARTED - With chronometer");
+        Notification n = createNotification("Japanese Walking Timer Active", System.currentTimeMillis() + 10000L);
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             Log.d(TAG, "FOREGROUND SERVICE STARTED - API 34+ with SPECIAL_USE type");
@@ -137,7 +140,7 @@ public class TimerService extends Service {
         }
     }
 
-    private Notification createNotification(String text) {
+    private Notification createNotification(String text, long triggerTime) {
         Intent intent = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
@@ -145,6 +148,9 @@ public class TimerService extends Service {
                 .setContentText(text)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pi)
+                .setWhen(triggerTime)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -220,6 +226,21 @@ public class TimerService extends Service {
             Log.d(TAG, "AUDIO STARTED - Ringtone playing for 4000ms");
         } catch (Exception e) {
             Log.e(TAG, "AUDIO ERROR - Failed to play ringtone: " + e.getMessage());
+        }
+    }
+
+    private void updateNotificationChronometer(long triggerTime) {
+        // Dynamic text showing current progress
+        String progressText = "Set " + (currentInterval + 1) + "/10";
+        
+        // Create updated notification with chronometer
+        Notification updatedNotification = createNotification(progressText, triggerTime);
+        
+        // Push notification update once per interval
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager != null) {
+            notificationManager.notify(NOTIFICATION_ID, updatedNotification);
+            Log.d(TAG, "NOTIFICATION UPDATED - Chronometer set for interval " + (currentInterval + 1));
         }
     }
 
