@@ -65,9 +65,9 @@ public class TimerService extends Service {
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JapaneseWalkingTimer:TimerWakelock");
-            Log.d(TAG, "WakeLock acquired successfully");
+            Log.d(TAG, "WakeLock initialized successfully - will acquire when timer starts");
         } else {
-            Log.e(TAG, "Failed to acquire PowerManager");
+            Log.e(TAG, "Failed to initialize PowerManager");
         }
     }
 
@@ -82,7 +82,11 @@ public class TimerService extends Service {
             stopAlert();
             if (wakeLock != null && wakeLock.isHeld()) {
                 wakeLock.release();
-                Log.d(TAG, "WakeLock released");
+                Log.d(TAG, "CPU WAKELOCK RELEASED - User stopped timer, CPU can now sleep");
+            } else if (wakeLock != null) {
+                Log.d(TAG, "CPU WAKELOCK NOT HELD - No wakeLock to release");
+            } else {
+                Log.w(TAG, "CPU WAKELOCK NULL - WakeLock was never initialized");
             }
             stopForeground(true);
             stopSelf();
@@ -114,7 +118,11 @@ public class TimerService extends Service {
             
             if (wakeLock != null && !wakeLock.isHeld()) {
                 wakeLock.acquire(40 * 60 * 1000L);
-                Log.d(TAG, "WakeLock acquired for 40 minutes");
+                Log.d(TAG, "CPU WAKELOCK ACQUIRED - Partial wake lock for 40 minutes, keeping CPU awake during timer session");
+            } else if (wakeLock != null && wakeLock.isHeld()) {
+                Log.d(TAG, "CPU WAKELOCK ALREADY HELD - WakeLock already active");
+            } else {
+                Log.e(TAG, "CPU WAKELOCK FAILED - WakeLock is null, timer may not work in deep sleep");
             }
 
             startForegroundNotification();
@@ -162,9 +170,14 @@ public class TimerService extends Service {
             
             // Stop service after final alert
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                // Release WakeLock before stopping service
+                if (wakeLock != null && wakeLock.isHeld()) {
+                    wakeLock.release();
+                    Log.d(TAG, "CPU WAKELOCK RELEASED - Session completed, CPU can now sleep");
+                }
                 stopForeground(true);
                 stopSelf();
-                Log.d(TAG, "SERVICE STOPPED - Session completed successfully");
+                Log.d(TAG, "SERVICE STOPPED - Session completed successfully after 30 minutes");
             }, 4000); // Wait for final alert to finish
             return;
         }
@@ -197,15 +210,15 @@ public class TimerService extends Service {
             if (canScheduleExact) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
-                    Log.d(TAG, "EXACT ALARM SCHEDULED - setExactAndAllowWhileIdle in " + intervalDuration + "s");
+                    Log.d(TAG, "PRECISION ALARM SCHEDULED - setExactAndAllowWhileIdle for exact 3-minute interval, will wake device from deep sleep");
                 } else {
                     am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
-                    Log.d(TAG, "EXACT ALARM SCHEDULED - setExact in " + intervalDuration + "s");
+                    Log.d(TAG, "PRECISION ALARM SCHEDULED - setExact for exact 3-minute interval");
                 }
             } else {
                 // Fallback to non-exact alarm if permission is missing
                 am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
-                Log.w(TAG, "FALLBACK ALARM SCHEDULED - setAndAllowWhileIdle in " + intervalDuration + "s (exact alarms not available)");
+                Log.w(TAG, "FALLBACK ALARM SCHEDULED - setAndAllowWhileIdle (may be less precise, exact alarms not available)");
             }
             
             long scheduledTime = System.currentTimeMillis() + (intervalDuration * 1000L);
