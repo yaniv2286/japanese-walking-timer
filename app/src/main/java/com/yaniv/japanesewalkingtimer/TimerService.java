@@ -149,7 +149,10 @@ public class TimerService extends Service {
                           (isFastPhase ? "Fast" : "Slow") + " Phase, Set " + currentSet);
                 }
                 
-                updateNotification();
+                // Update notification only every 60 seconds to prevent heartbeat beeping
+                if (totalElapsed % 60 == 0) {
+                    updateNotification();
+                }
                 
                 // Check for phase boundary (every 3 minutes)
                 if (phaseElapsed >= intervalDuration) {
@@ -398,10 +401,7 @@ public class TimerService extends Service {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {
             nm.notify(NOTIFICATION_ID, createNotification(text));
-            // Log notification updates every 60 seconds to avoid spam
-            if (totalElapsed % 60 == 0) {
-                Log.d(TAG, "NOTIFICATION UPDATED - " + text);
-            }
+            Log.d(TAG, "NOTIFICATION UPDATED - " + text);
         } else {
             Log.e(TAG, "NOTIFICATION UPDATE FAILED - NotificationManager is null");
         }
@@ -415,22 +415,26 @@ public class TimerService extends Service {
                 .setContentText(text)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pi)
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setSound(null)
+                .setVibrate(null)
                 .build();
     }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel c = new NotificationChannel(CHANNEL_ID, "Walking Timer", NotificationManager.IMPORTANCE_HIGH);
+            NotificationChannel c = new NotificationChannel(CHANNEL_ID, "Walking Timer", NotificationManager.IMPORTANCE_LOW);
             c.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            c.enableVibration(true);
+            c.enableVibration(false);
+            c.setSound(null, null);
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) {
                 nm.createNotificationChannel(c);
-                Log.d(TAG, "NOTIFICATION CHANNEL CREATED - High importance with vibration");
+                Log.d(TAG, "NOTIFICATION CHANNEL CREATED - Low importance, silent for background updates");
             } else {
                 Log.e(TAG, "FAILED TO CREATE NOTIFICATION CHANNEL - NotificationManager is null");
             }
