@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+    private static final String TAG = "MainActivity";
     private WebView webView;
     private static final int PERMISSION_REQUEST_CODE = 123;
 
@@ -69,27 +71,18 @@ public class MainActivity extends AppCompatActivity {
     public class WebAppInterface {
         @JavascriptInterface
         public void startTimerService() {
-            // Re-check permissions before starting service to avoid crash
-            boolean hasPermission = true;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                hasPermission = ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED;
-            }
-
-            if (hasPermission) {
-                Intent serviceIntent = new Intent(MainActivity.this, TimerService.class);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent);
-                } else {
-                    startService(serviceIntent);
-                }
+            Log.d(TAG, "WebAppInterface: startTimerService called");
+            Intent serviceIntent = new Intent(MainActivity.this, TimerService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
             } else {
-                // Re-request if missing
-                requestRequiredPermissions();
+                startService(serviceIntent);
             }
         }
 
         @JavascriptInterface
         public void stopTimerService() {
+            Log.d(TAG, "WebAppInterface: stopTimerService called");
             Intent serviceIntent = new Intent(MainActivity.this, TimerService.class);
             serviceIntent.setAction("STOP");
             startService(serviceIntent);
