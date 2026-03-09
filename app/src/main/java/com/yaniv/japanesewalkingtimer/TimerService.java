@@ -1,331 +1,113 @@
 package com.yaniv.japanesewalkingtimer;
 
-import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ServiceInfo;
-import android.media.AudioAttributes;
-import android.media.AudioManager;
-import android.media.MediaPlayer;
-import android.media.RingtoneManager;
-import android.net.Uri;
+import android.content.Context;
+import android.app.AlarmManager;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
 import android.os.PowerManager;
-import android.os.SystemClock;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
 import android.util.Log;
-import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
-import com.yaniv.japanesewalkingtimer.R;
 
 public class TimerService extends Service {
     private static final String TAG = "JapaneseTimer";
     private static final String CHANNEL_ID = "TimerServiceChannel";
     private static final int NOTIFICATION_ID = 1;
-    private static final String ACTION_ALARM = "com.yaniv.japanesewalkingtimer.ALARM";
-
-    private MediaPlayer currentMediaPlayer;
     
-    // Simple state
-    private int setCounter = 0;
-    private boolean isSessionActive = false;
-    private boolean isAlertPlaying = false;
-    
-    // Fixed constants
-    private final long THREE_MINUTES_MS = 180000; // EXACT 3 minutes
-    private final long ALERT_DURATION_MS = 4000; // EXACT 4 seconds
-    private final int MAX_SETS = 10; // 10 intervals = 30 minutes
-    
+    // Simple variables
+    private int currentInterval = 0; // Max is 10
     private PowerManager.WakeLock wakeLock;
-    private AudioManager audioManager;
-    private Vibrator vibrator;
-
+    
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.d(TAG, "Service Created - Japanese Walking Timer initializing");
+        Log.d(TAG, "Service Created");
         createNotificationChannel();
-        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         
-        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        if (pm != null) {
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JapaneseWalkingTimer:TimerWakelock");
-            Log.d(TAG, "WakeLock initialized successfully - will acquire when timer starts");
-        } else {
-            Log.e(TAG, "Failed to initialize PowerManager");
-        }
+        // Initialize WakeLock
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JapaneseTimer:WakeLock");
     }
-
+    
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "onStartCommand called - Action: " + (intent != null ? intent.getAction() : "null"));
+        Log.d(TAG, "Service Started");
         
-        if (intent != null && "STOP".equals(intent.getAction())) {
-            Log.d(TAG, "STOP action received - terminating session");
-            cancelAlarm();
-            stopTimer();
-            stopAlert();
-            if (wakeLock != null && wakeLock.isHeld()) {
-                wakeLock.release();
-                Log.d(TAG, "CPU WAKELOCK RELEASED - User stopped timer, CPU can now sleep");
-            } else if (wakeLock != null) {
-                Log.d(TAG, "CPU WAKELOCK NOT HELD - No wakeLock to release");
-            } else {
-                Log.w(TAG, "CPU WAKELOCK NULL - WakeLock was never initialized");
-            }
-            stopForeground(true);
-            stopSelf();
-            return START_NOT_STICKY;
-        }
-
-        if (intent != null && ACTION_ALARM.equals(intent.getAction())) {
-            Log.d(TAG, "ALARM action received - AlarmManager triggered interval alarm");
+        // Handle increment action from AlarmReceiver
+        if (intent != null && "INCREMENT_INTERVAL".equals(intent.getAction())) {
+            currentInterval++;
+            Log.d(TAG, "INTERVAL INCREMENTED - Now at: " + currentInterval + " of 10");
             
-            // Verify WakeLock is still held
-            if (wakeLock != null && wakeLock.isHeld()) {
-                Log.d(TAG, "WAKELOCK VERIFIED - CPU wake lock still active during alarm trigger");
-            } else if (wakeLock != null) {
-                Log.e(TAG, "WAKELOCK LOST - WakeLock not held during alarm trigger, reacquiring");
-                wakeLock.acquire(40 * 60 * 1000L);
-            } else {
-                Log.e(TAG, "WAKELOCK NULL - WakeLock is null during alarm trigger");
+            // Check if session is complete
+            if (currentInterval >= 10) {
+                Log.d(TAG, "SESSION COMPLETE - 10 intervals finished");
+                stopService();
+                return START_NOT_STICKY;
             }
             
-            if (isSessionActive) {
-                handlePhaseTransition();
-            } else {
-                Log.w(TAG, "Alarm triggered but session is not active");
-            }
+            // Schedule next alarm
+            scheduleNextAlarm();
             return START_STICKY;
         }
-
-        // Check if this is a fresh start (not from the alarm action)
-        if (intent != null && intent.getAction() == null) {
-            Log.d(TAG, "FRESH START - Simple timer initialization");
-            
-            // Simple initialization
-            setCounter = 0;
-            isSessionActive = false;
-            isAlertPlaying = false;
-            
-            // Acquire WakeLock for background execution
-            if (wakeLock != null && !wakeLock.isHeld()) {
-                wakeLock.acquire(40 * 60 * 1000L);
-                Log.d(TAG, "WAKELOCK ACQUIRED - CPU will stay awake for 30-minute session");
-            }
-            
-            startForegroundNotification();
-            scheduleNextAlarm();
-            
-            isSessionActive = true;
-            Log.d(TAG, "SESSION STARTED - Simple 3-minute intervals, setCounter: " + setCounter);
-        }
-
-        return START_STICKY;
-    }
-
-    
-    private void handlePhaseTransition() {
-        Log.d(TAG, "ALARM TRIGGERED - setCounter: " + setCounter);
         
-        // Increment counter
-        setCounter++;
+        // Initial start - begin session
+        startForegroundNotification();
         
-        // Check if session is complete
-        if (setCounter >= MAX_SETS) {
-            Log.d(TAG, "SESSION COMPLETE - " + setCounter + " intervals finished");
-            triggerReliableAlarm(6); // Final alert
-            
-            // Stop after 4 seconds
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                if (wakeLock != null && wakeLock.isHeld()) {
-                    wakeLock.release();
-                    Log.d(TAG, "WAKELOCK RELEASED - Session done");
-                }
-                stopForeground(true);
-                stopSelf();
-                Log.d(TAG, "SERVICE STOPPED - 30 minutes complete");
-            }, ALERT_DURATION_MS);
-            return;
+        // Acquire WakeLock for 35 minutes
+        if (wakeLock != null && !wakeLock.isHeld()) {
+            wakeLock.acquire(35 * 60 * 1000L); // 35 minutes
+            Log.d(TAG, "WAKELOCK ACQUIRED - 35 minutes for 30-minute session");
         }
         
-        // Standard alert for intervals 1-9
-        Log.d(TAG, "ALERT FIRING - Interval " + setCounter + " of " + MAX_SETS);
-        triggerReliableAlarm(4);
-        
-        // Schedule next alarm
+        // Reset counter and start
+        currentInterval = 0;
         scheduleNextAlarm();
         
-        Log.d(TAG, "INTERVAL " + setCounter + " DONE - Next alarm scheduled");
+        return START_STICKY;
     }
-
+    
     private void scheduleNextAlarm() {
+        Log.d(TAG, "SCHEDULING NEXT ALARM - Current interval: " + currentInterval);
+        
+        // Check if session is complete
+        if (currentInterval >= 10) {
+            Log.d(TAG, "SESSION COMPLETE - Stopping service");
+            stopService();
+            return;
+        }
+        
+        // Create Intent for AlarmReceiver
+        Intent alarmIntent = new Intent(this, AlarmReceiver.class);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, alarmIntent, 
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        
         // Get AlarmManager
-        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        if (am == null) {
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager == null) {
             Log.e(TAG, "CRITICAL FAILURE - AlarmManager is null");
-            stopForeground(true);
-            stopSelf();
+            stopService();
             return;
         }
         
-        // Clear previous alarm
-        Intent cancelIntent = new Intent(this, TimerService.class);
-        cancelIntent.setAction(ACTION_ALARM);
-        PendingIntent cancelPi = PendingIntent.getService(this, 0, cancelIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        am.cancel(cancelPi);
-        
-        // Schedule exactly 180,000ms from now
-        Intent intent = new Intent(this, TimerService.class);
-        intent.setAction(ACTION_ALARM);
-        PendingIntent pi = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        
-        long triggerAt = SystemClock.elapsedRealtime() + THREE_MINUTES_MS;
-        
-        // FAIL FAST - Verify exact timing
-        if (THREE_MINUTES_MS != 180000) {
-            Log.e(TAG, "CRITICAL ERROR - Interval is not 180,000ms: " + THREE_MINUTES_MS);
-            return;
-        }
+        // CRITICAL LINE: Exactly 180000L (3 minutes)
+        long triggerTime = System.currentTimeMillis() + 180000L;
         
         // Schedule exact alarm
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
-            Log.d(TAG, "ALARM SCHEDULED - Exactly 180,000ms from now");
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
         } else {
-            am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
-            Log.d(TAG, "ALARM SCHEDULED - Exactly 180,000ms from now (legacy)");
+            alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
         }
         
-        Log.d(TAG, "NEXT ALARM - setCounter will be: " + (setCounter + 1));
+        Log.d(TAG, "ALARM SCHEDULED - Exactly 180000L (3 minutes) from now");
+        Log.d(TAG, "Next alarm will fire at: " + new java.util.Date(triggerTime));
     }
-
-    private void cancelAlarm() {
-        Intent intent = new Intent(this, TimerService.class);
-        intent.setAction(ACTION_ALARM);
-        PendingIntent pi = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        if (am != null) {
-            am.cancel(pi);
-            Log.d(TAG, "ALARM CANCELLED - All pending alarms cleared");
-        } else {
-            Log.e(TAG, "FAILED TO CANCEL ALARM - AlarmManager is null");
-        }
-    }
-
     
-    private void playAlertSequence(int repeats) {
-        triggerReliableAlarm(repeats);
-    }
-
-    private void triggerReliableAlarm(int count) {
-        if (isAlertPlaying) {
-            Log.w(TAG, "ALERT ALREADY PLAYING - Skipping new alert request");
-            return;
-        }
-        
-        Log.d(TAG, "ALERT STARTED - " + count + " repetitions, duration: " + ALERT_DURATION_MS + "ms");
-        isAlertPlaying = true;
-        
-        new Thread(() -> {
-            try {
-                for (int i = 0; i < count; i++) {
-                    Log.d(TAG, "ALERT REPETITION " + (i + 1) + " of " + count);
-                    triggerSingleFeedback();
-                    if (i < count - 1) {
-                        Thread.sleep(1500);
-                    }
-                }
-            } catch (InterruptedException e) {
-                Log.w(TAG, "ALERT INTERRUPTED - " + e.getMessage());
-            } finally {
-                // Auto-stop after alert duration
-                try {
-                    Thread.sleep(ALERT_DURATION_MS);
-                } catch (InterruptedException e) {
-                    // Ignore
-                }
-                stopAlert();
-                Log.d(TAG, "ALERT COMPLETED - Auto-stopped after " + ALERT_DURATION_MS + "ms");
-            }
-        }).start();
-    }
-
-    private void stopAlert() {
-        if (currentMediaPlayer != null) {
-            try {
-                currentMediaPlayer.stop();
-                currentMediaPlayer.release();
-                Log.d(TAG, "ALERT AUDIO STOPPED - MediaPlayer released");
-            } catch (Exception e) {
-                Log.e(TAG, "Error stopping MediaPlayer: " + e.getMessage());
-            } finally {
-                currentMediaPlayer = null;
-            }
-        }
-        isAlertPlaying = false;
-    }
-
-    private void triggerSingleFeedback() {
-        Log.d(TAG, "SINGLE FEEDBACK TRIGGERED - Starting vibration and audio");
-        
-        // Set maximum alarm volume
-        try {
-            int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
-            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0);
-            Log.d(TAG, "ALARM VOLUME SET - Maximum volume: " + maxVolume);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to set alarm volume: " + e.getMessage());
-        }
-
-        // Trigger vibration
-        if (vibrator != null) {
-            AudioAttributes aa = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(800, VibrationEffect.DEFAULT_AMPLITUDE), aa);
-                Log.d(TAG, "VIBRATION STARTED - 800ms with API 26+ VibrationEffect");
-            } else {
-                vibrator.vibrate(800);
-                Log.d(TAG, "VIBRATION STARTED - 800ms with legacy API");
-            }
-        } else {
-            Log.w(TAG, "VIBRATION FAILED - Vibrator is null");
-        }
-
-        // Play audio alert
-        try {
-            // Stop any existing MediaPlayer
-            if (currentMediaPlayer != null) {
-                currentMediaPlayer.release();
-                currentMediaPlayer = null;
-            }
-            
-            Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            if (uri == null) {
-                uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-                Log.d(TAG, "FALLBACK AUDIO - Using notification ringtone");
-            } else {
-                Log.d(TAG, "ALARM AUDIO - Using alarm ringtone");
-            }
-            
-            currentMediaPlayer = new MediaPlayer();
-            currentMediaPlayer.setDataSource(this, uri);
-            currentMediaPlayer.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build());
-            currentMediaPlayer.prepare();
-            currentMediaPlayer.start();
-            
-            Log.d(TAG, "ALARM AUDIO STARTED - Playing ringtone");
-            
             currentMediaPlayer.setOnCompletionListener(mp -> {
                 Log.d(TAG, "ALARM AUDIO COMPLETED - MediaPlayer finished naturally");
                 mp.release();
