@@ -234,8 +234,33 @@ public class TimerService extends Service {
     // No AlarmManager - immortal loop handles timing
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Log.d(TAG, "APP KILLED FROM RECENTS - Executing dead-man's switch");
+        
+        // Total shutdown sequence
+        isRunning = false; // Stop the thread loop
+        serviceRunning = false; // Kill service flag
+        
+        // Release aggressive WakeLock
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            Log.d(TAG, "WAKELOCK RELEASED - Dead-man's switch activated");
+        }
+        
+        // Stop foreground notification
+        stopForeground(true);
+        Log.d(TAG, "FOREGROUND NOTIFICATION STOPPED - Dead-man's switch");
+        
+        // Kill the service completely
+        stopSelf();
+        Log.d(TAG, "SERVICE KILLED - Dead-man's switch complete");
+        
+        super.onTaskRemoved(rootIntent);
+    }
+    
+    @Override
     public void onDestroy() {
-        Log.d(TAG, "SERVICE DESTROYED - Nuclear cleanup");
+        Log.d(TAG, "NUCLEAR SERVICE DESTRUCTION - Cleaning up resources");
         
         // Kill runaway loop
         isRunning = false;
