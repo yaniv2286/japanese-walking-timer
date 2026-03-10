@@ -200,42 +200,26 @@ public class TimerService extends Service {
             Log.d(TAG, "VIBRATION STARTED - 1500ms short nudge");
         }
         
-        // Play notification sound (self-killing, no continuous bug)
+        // Play custom zen bell (absolute control)
         try {
-            currentMediaPlayer = new android.media.MediaPlayer();
-            AudioAttributes attributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM) // CRITICAL: Bypasses silent mode
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-            currentMediaPlayer.setAudioAttributes(attributes);
-            currentMediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
-            currentMediaPlayer.prepare();
-            
-            // Volume fade: Start at 0.1f and ramp up to 0.4f over 1 second
-            currentMediaPlayer.setVolume(0.1f, 0.1f); // Start very gentle
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                if (currentMediaPlayer != null && currentMediaPlayer.isPlaying()) {
-                    currentMediaPlayer.setVolume(0.4f, 0.4f); // Ramp up to gentle
-                }
-            }, 1000);
-            currentMediaPlayer.start();
-            
-            Log.d(TAG, "AUDIO STARTED - Notification sound playing");
-            
-            // Self-killing after 3000ms (3-second rule)
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                if (currentMediaPlayer != null) {
-                    try {
-                        if (currentMediaPlayer.isPlaying()) currentMediaPlayer.stop();
-                        currentMediaPlayer.release();
-                    } catch (Exception e) { /* ignore */ }
-                    currentMediaPlayer = null;
-                    Log.d(TAG, "AUDIO KILLED - 3000ms timeout");
-                }
-            }, 3000);
-            
+            currentMediaPlayer = android.media.MediaPlayer.create(context, R.raw.zen_bell);
+            if (currentMediaPlayer != null) {
+                currentMediaPlayer.setVolume(0.8f, 0.8f); // Clear but gentle
+                
+                // Auto-release on completion
+                currentMediaPlayer.setOnCompletionListener(mp -> {
+                    mp.release();
+                    if (currentMediaPlayer == mp) {
+                        currentMediaPlayer = null;
+                    }
+                    Log.d(TAG, "ZEN BELL COMPLETED - Auto-released");
+                });
+                
+                currentMediaPlayer.start();
+                Log.d(TAG, "ZEN BELL STARTED - Custom 432Hz meditation bell");
+            }
         } catch (Exception e) {
-            Log.e(TAG, "AUDIO ERROR - Failed to play notification sound: " + e.getMessage());
+            Log.e(TAG, "ZEN BELL ERROR - Failed to play custom audio: " + e.getMessage());
             currentMediaPlayer = null;
         }
     }
