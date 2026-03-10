@@ -91,6 +91,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        Log.d(TAG, "MainActivity resumed - forcing timer sync");
+        
+        // Force UI to recalculate immediately when app wakes up
+        if (webView != null) {
+            webView.evaluateJavascript("javascript:if(typeof forceTimerSync === 'function') forceTimerSync();", null);
+        }
+    }
+
+    @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
             webView.goBack();

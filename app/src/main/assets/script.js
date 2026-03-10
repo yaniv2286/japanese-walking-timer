@@ -164,12 +164,26 @@ class JapaneseWalkingTimer {
     }
 
     tick() {
-        // Absolute timing: Calculate remaining time dynamically
+        if (!this.isRunning || !this.endTime) return;
+
+        // BULLETPROOF: Check absolute time against expected end time
         const now = Date.now();
+        if (now >= this.endTime) {
+            // Session completed - force complete state immediately
+            this.totalElapsed = this.sessionDuration;
+            this.currentTime = 0;
+            this.completeSession();
+            return;
+        }
+
+        // Absolute timing: Calculate remaining based on end time
         const remaining = Math.max(0, this.endTime - now);
         this.totalElapsed = this.sessionDuration - Math.floor(remaining / 1000);
 
-        if (remaining <= 0) {
+        // Prevent negative time math
+        if (this.totalElapsed >= this.sessionDuration) {
+            this.totalElapsed = this.sessionDuration;
+            this.currentTime = 0;
             this.completeSession();
             return;
         }
@@ -229,8 +243,43 @@ class JapaneseWalkingTimer {
         const elapsedMinutes = Math.floor(this.totalElapsed / 60);
         const elapsedSeconds = this.totalElapsed % 60;
         this.elapsedTime.textContent = `${elapsedMinutes}:${elapsedSeconds.toString().padStart(2, '0')}`;
+
+        const totalMinutes = Math.floor(this.sessionDuration / 60);
+        const totalSeconds = this.sessionDuration % 60;
+        this.totalTime.textContent = `${totalMinutes}:${totalSeconds.toString().padStart(2, '0')}`;
     }
+
 }
+
+// Wake-up sync function for MainActivity to call
+window.forceTimerSync = function() {
+    if (timer && timer.isRunning && timer.endTime) {
+        // Force immediate time calculation to handle cryo-sleep desync
+        const now = Date.now();
+        if (now >= timer.endTime) {
+            // Session completed while app was asleep - force complete state
+            timer.totalElapsed = timer.sessionDuration;
+            timer.currentTime = 0;
+            timer.completeSession();
+        } else {
+            // Update to current real-world time
+            const remaining = Math.max(0, timer.endTime - now);
+            timer.totalElapsed = timer.sessionDuration - Math.floor(remaining / 1000);
+            
+            // Prevent negative time math
+            if (timer.totalElapsed >= timer.sessionDuration) {
+                timer.totalElapsed = timer.sessionDuration;
+                timer.currentTime = 0;
+                timer.completeSession();
+            } else {
+                timer.currentTime = timer.intervalDuration - (timer.totalElapsed % timer.intervalDuration);
+            }
+            
+            timer.updateDisplay();
+        }
+        console.log('FORCE SYNC: Timer updated to real-world time');
+    }
+};
 
 document.addEventListener('DOMContentLoaded', () => {
     new JapaneseWalkingTimer();
