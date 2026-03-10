@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.Context;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.media.RingtoneManager;
 import android.os.Build;
 import android.os.IBinder;
@@ -34,7 +36,6 @@ public class TimerService extends Service {
     private Thread backgroundThread;
     private volatile boolean serviceRunning = true;
     private volatile boolean isRunning = true; // Kill runaway loop
-    private android.media.MediaPlayer currentMediaPlayer; // Prevent overlap
     
     @Override
     public void onCreate() {
@@ -179,48 +180,34 @@ public class TimerService extends Service {
     }
 
     private void triggerAlert(Context context) {
-        // Prevent overlap - stop any existing audio
-        if (currentMediaPlayer != null) {
-            try {
-                if (currentMediaPlayer.isPlaying()) currentMediaPlayer.stop();
-                currentMediaPlayer.release();
-            } catch (Exception e) { /* ignore */ }
-            currentMediaPlayer = null;
-        }
+        // Professional double-pulse using ToneGenerator
+        ToneGenerator toneGen = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
         
-        // Vibrate for exactly 1500ms (short nudge)
+        // Double-pulse logic: beep-beep with 300ms gap
+        toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 150); // First beep, 150ms
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 150); // Second beep, 150ms
+        }, 300); // 300ms gap between beeps
+        
+        // Clean up memory after 600ms total
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            toneGen.release();
+            Log.d(TAG, "TONE GENERATOR RELEASED - Double-pulse completed");
+        }, 600);
+        
+        Log.d(TAG, "DOUBLE-PULSE STARTED - Professional smartwatch-style beep-beep");
+        
+        // Sync haptics: Double-vibrate pattern to match audio
         Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator != null && vibrator.hasVibrator()) {
+            long[] pattern = {0, 150, 100, 150}; // buzz-buzz pattern
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                VibrationEffect effect = VibrationEffect.createOneShot(1500, VibrationEffect.DEFAULT_AMPLITUDE);
+                VibrationEffect effect = VibrationEffect.createWaveform(pattern, -1);
                 vibrator.vibrate(effect);
             } else {
-                vibrator.vibrate(1500);
+                vibrator.vibrate(pattern, -1);
             }
-            Log.d(TAG, "VIBRATION STARTED - 1500ms short nudge");
-        }
-        
-        // Play custom zen bell (absolute control)
-        try {
-            currentMediaPlayer = android.media.MediaPlayer.create(context, R.raw.zen_bell);
-            if (currentMediaPlayer != null) {
-                currentMediaPlayer.setVolume(0.8f, 0.8f); // Clear but gentle
-                
-                // Auto-release on completion
-                currentMediaPlayer.setOnCompletionListener(mp -> {
-                    mp.release();
-                    if (currentMediaPlayer == mp) {
-                        currentMediaPlayer = null;
-                    }
-                    Log.d(TAG, "ZEN BELL COMPLETED - Auto-released");
-                });
-                
-                currentMediaPlayer.start();
-                Log.d(TAG, "ZEN BELL STARTED - Custom 432Hz meditation bell");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "ZEN BELL ERROR - Failed to play custom audio: " + e.getMessage());
-            currentMediaPlayer = null;
+            Log.d(TAG, "DOUBLE-VIBRATION STARTED - buzz-buzz pattern");
         }
     }
 
@@ -259,14 +246,7 @@ public class TimerService extends Service {
             Log.d(TAG, "NUCLEAR THREAD INTERRUPTED");
         }
         
-        // Stop any playing audio
-        if (currentMediaPlayer != null) {
-            try {
-                if (currentMediaPlayer.isPlaying()) currentMediaPlayer.stop();
-                currentMediaPlayer.release();
-            } catch (Exception e) { /* ignore */ }
-            currentMediaPlayer = null;
-        }
+        // No MediaPlayer cleanup - ToneGenerator self-releases
         
         // Release aggressive WakeLock so phone can sleep
         if (wakeLock != null && wakeLock.isHeld()) {
