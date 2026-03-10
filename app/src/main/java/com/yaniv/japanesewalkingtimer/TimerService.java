@@ -88,7 +88,7 @@ public class TimerService extends Service {
             
             while (currentInterval < 10 && serviceRunning && isRunning) {
                 try {
-                    Thread.sleep(10000); // 10-second test interval
+                    Thread.sleep(180000); // 3-minute production interval
                     
                     if (!serviceRunning || !isRunning) break; // Check if service was stopped
                     
@@ -107,7 +107,7 @@ public class TimerService extends Service {
                         triggerAlert(TimerService.this);
                         
                         // Update notification chronometer for next interval
-                        long nextTriggerTime = System.currentTimeMillis() + 10000L;
+                        long nextTriggerTime = System.currentTimeMillis() + 180000L;
                         updateNotificationChronometer(nextTriggerTime);
                     });
                     
@@ -129,7 +129,7 @@ public class TimerService extends Service {
 
     private void startForegroundNotification() {
         Log.d(TAG, "FOREGROUND NOTIFICATION STARTED - With chronometer");
-        Notification n = createNotification("Japanese Walking Timer", "Cycle 1/5", System.currentTimeMillis() + 10000L);
+        Notification n = createNotification("Japanese Walking Timer", "Cycle 1/5", System.currentTimeMillis() + 180000L);
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             Log.d(TAG, "FOREGROUND SERVICE STARTED - API 34+ with SPECIAL_USE type");

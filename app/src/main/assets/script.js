@@ -16,8 +16,8 @@ class JapaneseWalkingTimer {
         this.currentPhase = 'ready'; // 'ready', 'fast', 'slow'
         this.currentCycle = 1;
         this.totalCycles = 5;
-        this.intervalDuration = 10; // 10 seconds for testing
-        this.sessionDuration = 100; // 10 intervals × 10 seconds = 100 seconds
+        this.intervalDuration = 180; // 3 minutes for production
+        this.sessionDuration = 1800; // 10 intervals × 3 minutes = 30 minutes
         this.currentTime = this.intervalDuration;
         this.totalElapsed = 0;
         this.interval = null;
@@ -184,15 +184,15 @@ class JapaneseWalkingTimer {
         // ABSOLUTE MATH: No decrementing variables
         this.totalElapsed = elapsedSeconds;
         
-        // CYCLE CALCULATION: 20 seconds per cycle (2 intervals × 10 seconds)
-        this.currentCycle = Math.floor(elapsedSeconds / 20) + 1;
+        // CYCLE CALCULATION: 360 seconds per cycle (2 intervals × 3 minutes)
+        this.currentCycle = Math.floor(elapsedSeconds / 360) + 1;
         
-        // INTERVAL CALCULATION: Remaining time in current 10-second interval
-        const remainingIntervalSeconds = 10 - (elapsedSeconds % 10);
+        // INTERVAL CALCULATION: Remaining time in current 3-minute interval
+        const remainingIntervalSeconds = 180 - (elapsedSeconds % 180);
         this.currentTime = remainingIntervalSeconds;
         
         // PHASE CALCULATION: Fast/Slow alternation
-        const intervalNumber = Math.floor(elapsedSeconds / 10);
+        const intervalNumber = Math.floor(elapsedSeconds / 180);
         this.currentPhase = (intervalNumber % 2 === 0) ? 'fast' : 'slow';
 
         this.renderAbsoluteState();
@@ -303,15 +303,15 @@ window.forceTimerSync = function() {
             // ABSOLUTE MATH: Update to current real-world time
             timer.totalElapsed = elapsedSeconds;
             
-            // CYCLE CALCULATION: 20 seconds per cycle (2 intervals × 10 seconds)
-            timer.currentCycle = Math.floor(elapsedSeconds / 20) + 1;
+            // CYCLE CALCULATION: 360 seconds per cycle (2 intervals × 3 minutes)
+            timer.currentCycle = Math.floor(elapsedSeconds / 360) + 1;
             
-            // INTERVAL CALCULATION: Remaining time in current 10-second interval
-            const remainingIntervalSeconds = 10 - (elapsedSeconds % 10);
+            // INTERVAL CALCULATION: Remaining time in current 3-minute interval
+            const remainingIntervalSeconds = 180 - (elapsedSeconds % 180);
             timer.currentTime = remainingIntervalSeconds;
             
             // PHASE CALCULATION: Fast/Slow alternation
-            const intervalNumber = Math.floor(elapsedSeconds / 10);
+            const intervalNumber = Math.floor(elapsedSeconds / 180);
             timer.currentPhase = (intervalNumber % 2 === 0) ? 'fast' : 'slow';
             
             timer.renderAbsoluteState();
