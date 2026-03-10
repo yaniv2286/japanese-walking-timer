@@ -123,8 +123,9 @@ class JapaneseWalkingTimer {
             // Backend handles all audio - frontend silent
             this.vibrate();
             
-            // Absolute timing: Record end time for entire session
-            this.endTime = Date.now() + (this.sessionDuration * 1000);
+            // ANCHOR: Record absolute start time
+            window.sessionStartTime = Date.now();
+            this.endTime = window.sessionStartTime + (this.sessionDuration * 1000);
             this.totalElapsed = 0;
         } else {
             // Resume: recalculate endTime based on remaining time
@@ -164,42 +165,74 @@ class JapaneseWalkingTimer {
     }
 
     tick() {
-        if (!this.isRunning || !this.endTime) return;
+        if (!this.isRunning || !window.sessionStartTime) return;
 
-        // BULLETPROOF: Check absolute time against expected end time
-        const now = Date.now();
-        if (now >= this.endTime) {
-            // Session completed - force complete state immediately
+        // ABSOLUTE TIME: Calculate exact elapsed time
+        const elapsedSeconds = Math.floor((Date.now() - window.sessionStartTime) / 1000);
+        
+        // SESSION COMPLETE: Force UI to exact final state
+        if (elapsedSeconds >= this.sessionDuration) {
             this.totalElapsed = this.sessionDuration;
             this.currentTime = 0;
-            this.completeSession();
+            this.currentCycle = this.totalCycles;
+            this.currentPhase = 'complete';
+            this.stopTimer();
+            this.renderAbsoluteState();
             return;
         }
 
-        // Absolute timing: Calculate remaining based on end time
-        const remaining = Math.max(0, this.endTime - now);
-        this.totalElapsed = this.sessionDuration - Math.floor(remaining / 1000);
+        // ABSOLUTE MATH: No decrementing variables
+        this.totalElapsed = elapsedSeconds;
+        
+        // CYCLE CALCULATION: 20 seconds per cycle (2 intervals × 10 seconds)
+        this.currentCycle = Math.floor(elapsedSeconds / 20) + 1;
+        
+        // INTERVAL CALCULATION: Remaining time in current 10-second interval
+        const remainingIntervalSeconds = 10 - (elapsedSeconds % 10);
+        this.currentTime = remainingIntervalSeconds;
+        
+        // PHASE CALCULATION: Fast/Slow alternation
+        const intervalNumber = Math.floor(elapsedSeconds / 10);
+        this.currentPhase = (intervalNumber % 2 === 0) ? 'fast' : 'slow';
 
-        // Prevent negative time math
-        if (this.totalElapsed >= this.sessionDuration) {
-            this.totalElapsed = this.sessionDuration;
-            this.currentTime = 0;
-            this.completeSession();
-            return;
+        this.renderAbsoluteState();
+    }
+
+    renderAbsoluteState() {
+        // Render exact values to screen - snaps to reality instantly
+        this.phaseIndicator.className = `phase-indicator ${this.currentPhase}`;
+        
+        if (this.currentPhase === 'ready') {
+            this.phaseText.textContent = 'READY';
+        } else if (this.currentPhase === 'fast') {
+            this.phaseText.textContent = 'FAST';
+        } else if (this.currentPhase === 'slow') {
+            this.phaseText.textContent = 'SLOW';
+        } else if (this.currentPhase === 'complete') {
+            this.phaseText.textContent = 'COMPLETE!';
         }
 
-        // Check for phase change
-        const newPhaseIdx = Math.floor(this.totalElapsed / this.intervalDuration);
-        const oldPhaseIdx = Math.floor((this.totalElapsed - 1) / this.intervalDuration);
+        // Timer display: show remaining time in current interval
+        const minutes = Math.floor(this.currentTime / 60);
+        const seconds = Math.floor(this.currentTime % 60);
+        this.timeText.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
-        if (newPhaseIdx > oldPhaseIdx) {
-            this.switchPhase();
-        }
+        // Cycle info: show current cycle out of total
+        this.cycleInfo.textContent = `Cycle ${Math.min(this.currentCycle, this.totalCycles)}/${this.totalCycles}`;
 
-        // Update currentTime for display
-        this.currentTime = this.intervalDuration - (this.totalElapsed % this.intervalDuration);
+        // Progress bar: based on total elapsed time
+        const progress = (this.totalElapsed / this.sessionDuration) * 100;
+        this.progressFill.style.width = `${Math.min(progress, 100)}%`;
 
-        this.updateDisplay();
+        // Elapsed time display
+        const elapsedMinutes = Math.floor(this.totalElapsed / 60);
+        const elapsedSeconds = this.totalElapsed % 60;
+        this.elapsedTime.textContent = `${elapsedMinutes}:${elapsedSeconds.toString().padStart(2, '0')}`;
+
+        // Total time display
+        const totalMinutes = Math.floor(this.sessionDuration / 60);
+        const totalSeconds = this.sessionDuration % 60;
+        this.totalTime.textContent = `${totalMinutes}:${totalSeconds.toString().padStart(2, '0')}`;
     }
 
     switchPhase() {
@@ -253,31 +286,37 @@ class JapaneseWalkingTimer {
 
 // Wake-up sync function for MainActivity to call
 window.forceTimerSync = function() {
-    if (timer && timer.isRunning && timer.endTime) {
-        // Force immediate time calculation to handle cryo-sleep desync
-        const now = Date.now();
-        if (now >= timer.endTime) {
-            // Session completed while app was asleep - force complete state
+    if (timer && timer.isRunning && window.sessionStartTime) {
+        // ABSOLUTE TIME: Calculate exact elapsed time
+        const elapsedSeconds = Math.floor((Date.now() - window.sessionStartTime) / 1000);
+        
+        // SESSION COMPLETE: Force UI to exact final state
+        if (elapsedSeconds >= timer.sessionDuration) {
             timer.totalElapsed = timer.sessionDuration;
             timer.currentTime = 0;
-            timer.completeSession();
+            timer.currentCycle = timer.totalCycles;
+            timer.currentPhase = 'complete';
+            timer.stopTimer();
+            timer.renderAbsoluteState();
+            console.log('FORCE SYNC: Session completed - showing COMPLETE state');
         } else {
-            // Update to current real-world time
-            const remaining = Math.max(0, timer.endTime - now);
-            timer.totalElapsed = timer.sessionDuration - Math.floor(remaining / 1000);
+            // ABSOLUTE MATH: Update to current real-world time
+            timer.totalElapsed = elapsedSeconds;
             
-            // Prevent negative time math
-            if (timer.totalElapsed >= timer.sessionDuration) {
-                timer.totalElapsed = timer.sessionDuration;
-                timer.currentTime = 0;
-                timer.completeSession();
-            } else {
-                timer.currentTime = timer.intervalDuration - (timer.totalElapsed % timer.intervalDuration);
-            }
+            // CYCLE CALCULATION: 20 seconds per cycle (2 intervals × 10 seconds)
+            timer.currentCycle = Math.floor(elapsedSeconds / 20) + 1;
             
-            timer.updateDisplay();
+            // INTERVAL CALCULATION: Remaining time in current 10-second interval
+            const remainingIntervalSeconds = 10 - (elapsedSeconds % 10);
+            timer.currentTime = remainingIntervalSeconds;
+            
+            // PHASE CALCULATION: Fast/Slow alternation
+            const intervalNumber = Math.floor(elapsedSeconds / 10);
+            timer.currentPhase = (intervalNumber % 2 === 0) ? 'fast' : 'slow';
+            
+            timer.renderAbsoluteState();
+            console.log('FORCE SYNC: Timer updated to real-world time - ' + elapsedSeconds + 's elapsed');
         }
-        console.log('FORCE SYNC: Timer updated to real-world time');
     }
 };
 
