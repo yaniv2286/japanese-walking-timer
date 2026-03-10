@@ -188,16 +188,16 @@ public class TimerService extends Service {
             currentMediaPlayer = null;
         }
         
-        // Vibrate for exactly 3000ms (self-killing)
+        // Vibrate for exactly 2000ms (short and sweet)
         Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator != null && vibrator.hasVibrator()) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                VibrationEffect effect = VibrationEffect.createOneShot(3000, VibrationEffect.DEFAULT_AMPLITUDE);
+                VibrationEffect effect = VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE);
                 vibrator.vibrate(effect);
             } else {
-                vibrator.vibrate(3000);
+                vibrator.vibrate(2000);
             }
-            Log.d(TAG, "VIBRATION STARTED - 3000ms self-killing");
+            Log.d(TAG, "VIBRATION STARTED - 2000ms short pulse");
         }
         
         // Play notification sound (self-killing, no continuous bug)
@@ -208,14 +208,14 @@ public class TimerService extends Service {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build();
             currentMediaPlayer.setAudioAttributes(attributes);
-            currentMediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
+            currentMediaPlayer.setDataSource(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE));
             currentMediaPlayer.prepare();
-            currentMediaPlayer.setVolume(0.5f, 0.5f); // Gentle 50% volume
+            currentMediaPlayer.setVolume(0.3f, 0.3f); // Very gentle 30% volume
             currentMediaPlayer.start();
             
             Log.d(TAG, "AUDIO STARTED - Notification sound playing");
             
-            // Self-killing after 3000ms
+            // Self-killing after 2000ms (matches vibration)
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 if (currentMediaPlayer != null) {
                     try {
@@ -223,9 +223,9 @@ public class TimerService extends Service {
                         currentMediaPlayer.release();
                     } catch (Exception e) { /* ignore */ }
                     currentMediaPlayer = null;
-                    Log.d(TAG, "AUDIO KILLED - 3000ms timeout");
+                    Log.d(TAG, "AUDIO KILLED - 2000ms timeout");
                 }
-            }, 3000);
+            }, 2000);
             
         } catch (Exception e) {
             Log.e(TAG, "AUDIO ERROR - Failed to play notification sound: " + e.getMessage());
